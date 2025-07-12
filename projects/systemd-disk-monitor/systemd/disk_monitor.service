@@ -1,0 +1,30 @@
+[Unit]
+Description=Disk Usage Monitor Service
+Documentation=file:///opt/disk-monitor/README.md
+After=multi-user.target
+Wants=local-fs.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/opt/disk-monitor/disk-check.sh
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security and resource settings
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/log
+MemoryMax=50M
+CPUQuota=10%
+
+# Environment
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=multi-user.target
