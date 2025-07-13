@@ -1,0 +1,32 @@
+# msmtp Configuration Template
+# Save as ~/.msmtprc and /root/.msmtprc
+# Set permissions: chmod 600 ~/.msmtprc
+
+# Set default values for all following accounts
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.msmtp.log
+
+# Gmail account configuration
+account        gmail
+host           smtp.gmail.com
+port           587
+from           YOUR_EMAIL@gmail.com
+user           YOUR_EMAIL@gmail.com
+password       YOUR_16_CHARACTER_APP_PASSWORD
+
+# Set default account
+account default : gmail
+
+# Configuration Notes:
+# 1. Replace YOUR_EMAIL@gmail.com with your actual Gmail address
+# 2. Replace YOUR_16_CHARACTER_APP_PASSWORD with your Gmail App Password
+# 3. To generate App Password:
+#    - Enable 2-Step Verification on your Google Account
+#    - Go to Google Account → Security → 2-Step Verification → App passwords
+#    - Create new app password for "Mail" application
+#    - Use the 16-character password (spaces will be ignored)
+# 4. Set proper permissions: chmod 600 ~/.msmtprc
+# 5. Copy to root for systemd service: sudo cp ~/.msmtprc /root/
