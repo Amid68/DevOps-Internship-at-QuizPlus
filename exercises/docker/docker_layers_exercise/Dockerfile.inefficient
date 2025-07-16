@@ -1,0 +1,15 @@
+FROM alpine:latest
+
+# Poor ordering: Copy application code early (this changes frequently during development)
+COPY . /app/
+WORKDIR /app
+
+# Install packages after copying code (this is expensive but stable)
+RUN apk update
+RUN apk add --no-cache curl python3 py3-pip
+
+# Create application structure
+RUN mkdir -p /app/logs /app/config
+
+# Set up application
+RUN echo "Application version 1.0" > /app/version.txt

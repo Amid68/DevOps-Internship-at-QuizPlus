@@ -1,0 +1,17 @@
+FROM alpine:latest
+
+# Consolidate package operations into a single layer
+# This prevents stale package index issues and reduces layer count
+RUN apk update && \
+    apk add --no-cache curl python3 py3-pip && \
+    rm -rf /var/cache/apk/*
+
+# Create application structure (seperate layer for good caching)
+RUN mkdir -p /app/logs /app/config
+WORKDIR /app
+
+# Copy application code (seperate layer since it chagnes freqeuently)
+COPY . /app/
+
+# Application setup (could be consolidated with copy, but seperate for clarity)
+RUN echo "Application version 1.0" > /app/version.txt

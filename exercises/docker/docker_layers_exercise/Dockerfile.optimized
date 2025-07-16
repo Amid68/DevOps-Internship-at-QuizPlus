@@ -1,0 +1,17 @@
+FROM alpine:latest
+
+# Layer ordering principle: Install stable, expensive dependencies FIRST
+# These layers rarely change, so they'll be cached effectively
+RUN apk update
+RUN apk add --no-cache curl python3 py3-pip
+
+# Create application structure (also stable)
+RUN mkdir -p /app/logs /app/config
+WORKDIR /app
+
+# Copy application code LAST (this changes frequently during development)
+# By placing this late, code changes won't invalidate the expensive package layers above 
+COPY . /app/
+
+# Set up application (this can also reference copied files)
+RUN echo "Application version 1.0" > /app/version.txt
