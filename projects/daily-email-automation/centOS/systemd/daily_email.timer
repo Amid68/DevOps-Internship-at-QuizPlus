@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Email System Report Timer
+Requires=daily_email.service
+
+[Timer]
+OnCalendar=*-*-* 13:00:00
+Persistent=true
+AccuracySec=1min
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

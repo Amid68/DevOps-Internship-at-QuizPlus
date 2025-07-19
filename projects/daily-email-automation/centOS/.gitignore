@@ -1,0 +1,6 @@
+# Ignore files with actual passwords or sensitive data
+*.log
+config/*.conf
+config/msmtprc
+.env
+# Keep only template files

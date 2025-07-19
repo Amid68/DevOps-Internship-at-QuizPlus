@@ -1,0 +1,22 @@
+# System-wide msmtp configuration for automated services
+# Location: /etc/msmtprc
+# Purpose: Enable system services to send email through Gmail
+
+# Default settings
+defaults
+syslog on
+tls on
+tls_trust_file /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+
+# Gmail account configuration
+account gmail
+host smtp.gmail.com
+port 587
+tls_starttls on
+from othman.ameed@gmail.com
+auth on
+user othman.ameed@gmail.com
+password YOUR_GMAIL_APP_PASSWORD_HERE
+
+# Set gmail as default account
+account default : gmail

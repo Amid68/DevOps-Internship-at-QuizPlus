@@ -1,0 +1,30 @@
+# Gmail SMTP configuration for daily email automation
+# This tells msmtp how to connect to Gmail's servers securely
+
+# Default settings that apply to all accounts
+defaults
+# Always log what happens - crucial for troubleshooting
+syslog on
+# Use TLS encryption for security
+tls on
+# Don't verify the certificate hostname (sometimes needed for Gmail)
+tls_trust_file /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+
+# Define our Gmail account configuration
+account gmail
+# Gmail's SMTP server address
+host smtp.gmail.com
+# Gmail's secure submission port
+port 587
+# Start with unencrypted connection, then upgrade to TLS
+tls_starttls on
+# My Gmail username
+from othman.ameed@gmail.com
+# Authentication method - 'plain' works securely over TLS
+auth on
+user othman.ameed@gmail.com
+# Gmail App Password
+password YOUR_GMAIL_APP_PASSWORD_HERE
+
+# Set gmail as the default account
+account default : gmail

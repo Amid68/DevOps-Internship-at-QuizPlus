@@ -1,0 +1,21 @@
+[Unit]
+Description=Daily Email System Report Service
+Documentation=man:msmtp(1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/local/sbin/daily_email.sh
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+ReadWritePaths=/var/log
+
+[Install]
+WantedBy=multi-user.target
