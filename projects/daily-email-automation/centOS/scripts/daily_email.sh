@@ -38,7 +38,7 @@ gather_system_info() {
 	local hostname=$(hostname)
 	local uptime_info=$(uptime | sed 's/.*up //' | sed 's/, load.*//')
 	local disk_usage=$(df -h / | awk 'NR==2 {print $3"/"$2" ("$5" used)"}')
-	local memory_usage=$(free -h | awk 'NR==2{printf "%.1fG/%.1fG (%.1f%% used)", $3/1024/1024/1024, $2/1024/1024/1024, $3*100/$2}')
+	local memory_usage=$(free -h | awk 'NR==2{printf "%s used of %s", $3, $2}')
 	local current_date=$(date '+%A, %B %d, %Y at %H:%M:%S %Z')
 
 	# Create email content with proper formatting
