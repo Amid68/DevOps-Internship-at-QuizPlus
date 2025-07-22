@@ -14,7 +14,7 @@ node('docker') {
                 $class: 'GitSCM',
                 branches: [[name: '*/fastAPI_Process_Monitor']],
                 userRemoteConfigs: [[
-                    url: 'git@github.com:Amid68/DevOps-Internship-at-QuizPlus.git',
+                    url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git',
                     credentialsId: 'github-ssh'
                 ]]
             ])
