@@ -1,0 +1,106 @@
+node('docker') {
+    def imageName = 'fastapi-procmon'
+    def imageTag = "${BUILD_NUMBER}"
+    
+    try {
+        stage('Cleanup Workspace') {
+            echo "Cleaning workspace..."
+            deleteDir()
+        }
+        
+        stage('Checkout') {
+            echo "Checking out repository..."
+            checkout([
+                $class: 'GitSCM',
+                branches: [[name: '*/fastAPI_Process_Monitor']],
+                userRemoteConfigs: [[url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git']]
+            ])
+        }
+        
+        stage('Navigate to App Directory') {
+            echo "Current directory contents:"
+            sh 'ls -la'
+            
+            echo "App directory contents:"
+            sh 'ls -la projects/fastAPI_procmon/'
+            
+            // Verify required files exist
+            sh '''
+                cd projects/fastAPI_procmon/
+                if [ -f "Dockerfile" ]; then
+                    echo "✅ Dockerfile found"
+                else
+                    echo "❌ Dockerfile not found"
+                    exit 1
+                fi
+                
+                if [ -f "main.py" ]; then
+                    echo "✅ main.py found"
+                else
+                    echo "❌ main.py not found"
+                    exit 1
+                fi
+                
+                if [ -f "requirements.txt" ]; then
+                    echo "✅ requirements.txt found"
+                else
+                    echo "❌ requirements.txt not found"
+                    exit 1
+                fi
+            '''
+        }
+        
+        stage('Build Docker Image') {
+            echo "Building Docker image: ${imageName}:${imageTag}"
+            
+            sh """
+                cd projects/fastAPI_procmon/
+                docker build -t ${imageName}:${imageTag} .
+                docker build -t ${imageName}:latest .
+            """
+            
+            echo "Listing built images:"
+            sh "docker images | grep ${imageName}"
+        }
+        
+        stage('Test Docker Image') {
+            echo "Testing the Docker image..."
+            
+            sh """
+                # Run container in background
+                docker run -d --name fastapi-test-${BUILD_NUMBER} -p 800${BUILD_NUMBER}:8000 ${imageName}:${imageTag}
+                
+                # Wait for startup
+                sleep 10
+                
+                # Check if container is running
+                docker ps | grep fastapi-test-${BUILD_NUMBER}
+                
+                # Check logs
+                docker logs fastapi-test-${BUILD_NUMBER}
+            """
+        }
+        
+        stage('Cleanup Test Container') {
+            echo "Cleaning up test container..."
+            sh """
+                docker stop fastapi-test-${BUILD_NUMBER} || true
+                docker rm fastapi-test-${BUILD_NUMBER} || true
+            """
+        }
+        
+        echo "✅ Pipeline completed successfully!"
+        echo "Built image: ${imageName}:${imageTag}"
+        
+    } catch (Exception e) {
+        echo "❌ Pipeline failed: ${e.getMessage()}"
+        
+        // Cleanup on failure
+        sh """
+            docker stop fastapi-test-${BUILD_NUMBER} || true
+            docker rm fastapi-test-${BUILD_NUMBER} || true
+        """
+        
+        throw e
+    }
+}
