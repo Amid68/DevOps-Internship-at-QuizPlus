@@ -1,7 +1,7 @@
 node('docker') {
     def imageName = 'fastapi-procmon'
     def imageTag = "${BUILD_NUMBER}"
-    def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
+    def dockerHubRepo = 'your-dockerhub-username/fastapi-procmon' // Replace with your Docker Hub username
     
     try {
         stage('Cleanup Workspace') {
@@ -51,23 +51,28 @@ node('docker') {
                 docker ps | grep fastapi-test-${BUILD_NUMBER} || exit 1
                 echo "✅ Container running"
                 
-                # Install curl and test /processes endpoint
-                docker exec fastapi-test-${BUILD_NUMBER} sh -c "
-                    apt-get update -qq && apt-get install -y curl -qq
-                    RESPONSE=\\\$(curl -s http://localhost:8000/processes)
-                    echo 'Response: '\\\$RESPONSE
-                    
-                    # Validate JSON and content
-                    echo '\\\$RESPONSE' | python3 -m json.tool > /dev/null || exit 1
-                    echo '✅ Valid JSON response'
-                    
-                    # Count processes
-                    COUNT=\\\$(echo '\\\$RESPONSE' | python3 -c 'import sys, json; print(len(json.load(sys.stdin)))')
-                    echo '📊 Processes found: '\\\$COUNT
-                    
-                    # Ensure we got some processes
-                    [ \\\$COUNT -gt 0 ] && echo '✅ Process monitoring working' || exit 1
-                "
+                # Install curl in container
+                docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
+                
+                # Test /processes endpoint and save to file for easier handling
+                docker exec fastapi-test-${BUILD_NUMBER} curl -s http://localhost:8000/processes > response.json
+                
+                echo "Response received:"
+                cat response.json
+                
+                # Validate JSON format
+                cat response.json | python3 -m json.tool > /dev/null || exit 1
+                echo "✅ Valid JSON response"
+                
+                # Count processes
+                PROCESS_COUNT=\$(cat response.json | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+                echo "📊 Processes found: \$PROCESS_COUNT"
+                
+                # Ensure we got some processes
+                [ \$PROCESS_COUNT -gt 0 ] && echo "✅ Process monitoring working" || exit 1
+                
+                # Cleanup temp file
+                rm -f response.json
             """
         }
         
