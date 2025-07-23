@@ -1,6 +1,8 @@
 node('docker') {
     def imageName = 'fastapi-procmon'
     def imageTag = "${BUILD_NUMBER}"
+    // Use a simple, safe port in the ephemeral range
+    def testPort = 9000 + BUILD_NUMBER.toInteger()
     
     try {
         stage('Cleanup Workspace') {
@@ -67,19 +69,28 @@ node('docker') {
         }
         
         stage('Test Docker Image') {
-            echo "Testing the Docker image..."
+            echo "Testing the Docker image on port ${testPort}..."
+            
+            // Ensure port is within valid range
+            if (testPort > 65535) {
+                error("Calculated port ${testPort} exceeds maximum port number. Please adjust the port calculation.")
+            }
             
             sh """
                 # Run container in background
-                docker run -d --name fastapi-test-${BUILD_NUMBER} -p 800${BUILD_NUMBER}:8000 ${imageName}:${imageTag}
+                docker run -d --name fastapi-test-${BUILD_NUMBER} -p ${testPort}:8000 ${imageName}:${imageTag}
                 
                 # Wait for startup
-                sleep 10
+                sleep 15
                 
                 # Check if container is running
                 docker ps | grep fastapi-test-${BUILD_NUMBER}
                 
+                # Basic health check
+                timeout 30 bash -c 'until curl -f http://localhost:${testPort}/; do sleep 2; done' || echo "Health check timeout - checking logs"
+                
                 # Check logs
+                echo "Container logs:"
                 docker logs fastapi-test-${BUILD_NUMBER}
             """
         }
@@ -94,6 +105,7 @@ node('docker') {
         
         echo "✅ Pipeline completed successfully!"
         echo "Built image: ${imageName}:${imageTag}"
+        echo "Tested on port: ${testPort}"
         
     } catch (Exception e) {
         echo "❌ Pipeline failed: ${e.getMessage()}"
