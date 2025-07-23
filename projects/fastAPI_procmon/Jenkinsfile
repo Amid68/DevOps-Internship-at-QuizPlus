@@ -1,7 +1,7 @@
 node('docker') {
     def imageName = 'fastapi-procmon'
     def imageTag = "${BUILD_NUMBER}"
-    def dockerHubRepo = 'your-dockerhub-username/fastapi-procmon' // Replace with your Docker Hub username
+    def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
     
     try {
         stage('Cleanup Workspace') {
