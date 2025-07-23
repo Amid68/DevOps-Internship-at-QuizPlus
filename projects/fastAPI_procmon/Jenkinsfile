@@ -1,7 +1,7 @@
 node('docker') {
     def imageName = 'fastapi-procmon'
     def imageTag = "${BUILD_NUMBER}"
-    def testPort = 9000 + BUILD_NUMBER.toInteger()
+    def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
     
     try {
         stage('Cleanup Workspace') {
@@ -21,205 +21,99 @@ node('docker') {
             ])
         }
         
-        stage('Navigate to App Directory') {
-            echo "Current directory contents:"
-            sh 'ls -la'
-            
-            echo "App directory contents:"
-            sh 'ls -la projects/fastAPI_procmon/'
-            
-            // Verify required files exist
+        stage('Verify Files') {
+            echo "Verifying required files..."
             sh '''
                 cd projects/fastAPI_procmon/
-                if [ -f "Dockerfile" ]; then
-                    echo "✅ Dockerfile found"
-                else
-                    echo "❌ Dockerfile not found"
-                    exit 1
-                fi
-                
-                if [ -f "main.py" ]; then
-                    echo "✅ main.py found"
-                else
-                    echo "❌ main.py not found"
-                    exit 1
-                fi
-                
-                if [ -f "requirements.txt" ]; then
-                    echo "✅ requirements.txt found"
-                else
-                    echo "❌ requirements.txt not found"
-                    exit 1
-                fi
+                [ -f "Dockerfile" ] && echo "✅ Dockerfile found" || exit 1
+                [ -f "main.py" ] && echo "✅ main.py found" || exit 1
+                [ -f "requirements.txt" ] && echo "✅ requirements.txt found" || exit 1
             '''
         }
         
         stage('Build Docker Image') {
             echo "Building Docker image: ${imageName}:${imageTag}"
-            
             sh """
                 cd projects/fastAPI_procmon/
                 docker build -t ${imageName}:${imageTag} .
                 docker build -t ${imageName}:latest .
             """
-            
-            echo "Listing built images:"
-            sh "docker images | grep ${imageName}"
         }
         
-        stage('Test Docker Image & /processes Endpoint') {
-            echo "Testing the Docker image and /processes endpoint..."
-            
-            // First try external testing
+        stage('Test /processes Endpoint') {
+            echo "Testing the /processes endpoint..."
             sh """
-                echo "Starting container on port ${testPort}..."
-                docker run -d --name fastapi-test-${BUILD_NUMBER} -p ${testPort}:8000 ${imageName}:${imageTag}
-                
-                # Wait for startup
+                # Start test container
+                docker run -d --name fastapi-test-${BUILD_NUMBER} ${imageName}:${imageTag}
                 sleep 15
                 
-                # Check if container is running
-                if docker ps | grep fastapi-test-${BUILD_NUMBER}; then
-                    echo "✅ Container is running successfully"
-                else
-                    echo "❌ Container failed to start"
-                    docker logs fastapi-test-${BUILD_NUMBER}
-                    exit 1
-                fi
+                # Verify container is running
+                docker ps | grep fastapi-test-${BUILD_NUMBER} || exit 1
+                echo "✅ Container running"
                 
-                echo "Container logs after startup:"
-                docker logs fastapi-test-${BUILD_NUMBER}
-                
-                # Get container IP for testing
-                CONTAINER_IP=\$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' fastapi-test-${BUILD_NUMBER})
-                echo "Container IP: \${CONTAINER_IP}"
-                
-                # Test connectivity methods
-                echo "Testing different connection methods..."
-                
-                # Method 1: Try localhost
-                echo "Testing localhost:${testPort}/processes"
-                if timeout 10 curl -f http://localhost:${testPort}/processes 2>/dev/null; then
-                    echo "✅ Localhost connection successful"
-                    EXTERNAL_SUCCESS=true
-                else
-                    echo "⚠️ Localhost connection failed"
-                    EXTERNAL_SUCCESS=false
-                fi
-                
-                # Method 2: Try container IP directly  
-                echo "Testing container IP directly: \${CONTAINER_IP}:8000/processes"
-                if timeout 10 curl -f http://\${CONTAINER_IP}:8000/processes 2>/dev/null; then
-                    echo "✅ Container IP connection successful"
-                    EXTERNAL_SUCCESS=true
-                else
-                    echo "⚠️ Container IP connection failed"
-                fi
-                
-                # Method 3: Internal testing (most reliable)
-                echo "Testing /processes endpoint from inside container..."
-                
-                # Install curl in the container if needed
+                # Install curl and test /processes endpoint
                 docker exec fastapi-test-${BUILD_NUMBER} sh -c "
-                    # Update package list and install curl quietly
-                    apt-get update -qq >/dev/null 2>&1
-                    apt-get install -y curl -qq >/dev/null 2>&1
-                " || echo "Curl may already be installed or installation failed"
-                
-                # Test the root endpoint first
-                echo "Testing root endpoint (/) from inside container:"
-                docker exec fastapi-test-${BUILD_NUMBER} curl -f http://localhost:8000/ || echo "Root endpoint test completed"
-                
-                # Test the /processes endpoint
-                echo "Testing /processes endpoint from inside container:"
-                PROCESSES_RESPONSE=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s http://localhost:8000/processes 2>/dev/null)
-                
-                if [ \$? -eq 0 ] && [ ! -z "\$PROCESSES_RESPONSE" ]; then
-                    echo "✅ /processes endpoint responded successfully"
-                    echo "Response preview: \$(echo \"\$PROCESSES_RESPONSE\" | head -c 200)..."
+                    apt-get update -qq && apt-get install -y curl -qq
+                    RESPONSE=\\\$(curl -s http://localhost:8000/processes)
+                    echo 'Response: '\\\$RESPONSE
                     
-                    # Check if response looks like JSON
-                    if echo "\$PROCESSES_RESPONSE" | python3 -m json.tool >/dev/null 2>&1; then
-                        echo "✅ Response is valid JSON"
-                        
-                        # Count processes in response
-                        PROCESS_COUNT=\$(echo "\$PROCESSES_RESPONSE" | python3 -c "import sys, json; data=json.load(sys.stdin); print(len(data) if isinstance(data, list) else 'N/A')" 2>/dev/null || echo "unknown")
-                        echo "📊 Processes found: \$PROCESS_COUNT"
-                    else
-                        echo "⚠️ Response is not valid JSON"
-                    fi
-                else
-                    echo "❌ /processes endpoint failed to respond"
-                    exit 1
-                fi
-                
-                # Additional health checks
-                echo "Performing additional health checks..."
-                
-                # Check if the FastAPI app is responding to other endpoints
-                docker exec fastapi-test-${BUILD_NUMBER} curl -s http://localhost:8000/docs >/dev/null && echo "✅ /docs endpoint accessible" || echo "⚠️ /docs endpoint not accessible"
-                
-                # Final container status check
-                if docker ps | grep fastapi-test-${BUILD_NUMBER}; then
-                    echo "✅ Container remained stable during all tests"
-                else
-                    echo "❌ Container stopped during testing"
-                    exit 1
-                fi
-                
-                echo "=== FINAL TEST RESULTS ==="
-                echo "✅ Container: Running"
-                echo "✅ FastAPI App: Started"
-                echo "✅ /processes endpoint: Working"
-                echo "✅ JSON response: Valid"
-                echo "📊 Process monitoring: Functional"
+                    # Validate JSON and content
+                    echo '\\\$RESPONSE' | python3 -m json.tool > /dev/null || exit 1
+                    echo '✅ Valid JSON response'
+                    
+                    # Count processes
+                    COUNT=\\\$(echo '\\\$RESPONSE' | python3 -c 'import sys, json; print(len(json.load(sys.stdin)))')
+                    echo '📊 Processes found: '\\\$COUNT
+                    
+                    # Ensure we got some processes
+                    [ \\\$COUNT -gt 0 ] && echo '✅ Process monitoring working' || exit 1
+                "
             """
         }
         
         stage('Cleanup Test Container') {
-            echo "Cleaning up test container..."
-            sh """
-                docker stop fastapi-test-${BUILD_NUMBER} || true
-                docker rm fastapi-test-${BUILD_NUMBER} || true
-            """
+            sh "docker stop fastapi-test-${BUILD_NUMBER} && docker rm fastapi-test-${BUILD_NUMBER}"
         }
         
-        stage('Final Verification') {
-            echo "Running final smoke test..."
+        stage('Push to Docker Hub') {
+            echo "Pushing to Docker Hub..."
+            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                sh """
+                    # Login to Docker Hub
+                    echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                    
+                    # Tag images for Docker Hub
+                    docker tag ${imageName}:${imageTag} ${dockerHubRepo}:${imageTag}
+                    docker tag ${imageName}:latest ${dockerHubRepo}:latest
+                    
+                    # Push both tags
+                    docker push ${dockerHubRepo}:${imageTag}
+                    docker push ${dockerHubRepo}:latest
+                    
+                    echo "✅ Images pushed to Docker Hub:"
+                    echo "  - ${dockerHubRepo}:${imageTag}"
+                    echo "  - ${dockerHubRepo}:latest"
+                """
+            }
+        }
+        
+        stage('Cleanup Local Images') {
+            echo "Cleaning up local images..."
             sh """
-                # Quick smoke test with temporary container
-                echo "Testing import and basic functionality..."
-                TEMP_OUTPUT=\$(docker run --rm ${imageName}:${imageTag} python -c "
-import main
-print('✅ Application imports successfully')
-try:
-    from main import get_processes_by_memory
-    print('✅ get_processes_by_memory function available')
-except ImportError as e:
-    print('⚠️ Function import issue:', e)
-" 2>&1)
-                echo "\$TEMP_OUTPUT"
-                echo "✅ Smoke test completed"
+                # Keep only the latest 3 builds locally
+                docker images ${imageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
             """
         }
         
         echo "🎉 Pipeline completed successfully!"
-        echo "Built image: ${imageName}:${imageTag}"
-        echo "✅ /processes endpoint verified and working"
-        echo "📊 Process monitoring functionality confirmed"
+        echo "✅ Built: ${imageName}:${imageTag}"
+        echo "✅ /processes endpoint tested and working"
+        echo "✅ Pushed to Docker Hub: ${dockerHubRepo}"
         
     } catch (Exception e) {
         echo "❌ Pipeline failed: ${e.getMessage()}"
-        
-        // Enhanced cleanup and debugging on failure
-        sh """
-            echo "=== DEBUGGING INFORMATION ==="
-            docker ps -a | grep fastapi-test-${BUILD_NUMBER} || echo "No test container found"
-            docker logs fastapi-test-${BUILD_NUMBER} 2>/dev/null || echo "No container logs available"
-            docker stop fastapi-test-${BUILD_NUMBER} || true
-            docker rm fastapi-test-${BUILD_NUMBER} || true
-        """
-        
+        sh "docker stop fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
+        sh "docker rm fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
         throw e
     }
 }
