@@ -1,0 +1,124 @@
+node('docker') {
+    def imageName = 'fastapi-procmon'
+    def imageTag = "${BUILD_NUMBER}"
+    def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
+    
+    try {
+        stage('Cleanup Workspace') {
+            echo "Cleaning workspace..."
+            deleteDir()
+        }
+        
+        stage('Checkout') {
+            echo "Checking out repository..."
+            checkout([
+                $class: 'GitSCM',
+                branches: [[name: '*/fastAPI_Process_Monitor']],
+                userRemoteConfigs: [[
+                    url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git',
+                    credentialsId: 'github-credentials'
+                ]]
+            ])
+        }
+        
+        stage('Verify Files') {
+            echo "Verifying required files..."
+            sh '''
+                cd projects/fastAPI_procmon/
+                [ -f "Dockerfile" ] && echo "✅ Dockerfile found" || exit 1
+                [ -f "main.py" ] && echo "✅ main.py found" || exit 1
+                [ -f "requirements.txt" ] && echo "✅ requirements.txt found" || exit 1
+            '''
+        }
+        
+        stage('Build Docker Image') {
+            echo "Building Docker image: ${imageName}:${imageTag}"
+            sh """
+                cd projects/fastAPI_procmon/
+                docker build -t ${imageName}:${imageTag} .
+                
+            """
+        }
+        
+        stage('Test /processes Endpoint') {
+            echo "Testing the /processes endpoint..."
+            sh """
+                # Start test container
+                docker run -d --name fastapi-test-${BUILD_NUMBER} ${imageName}:${imageTag}
+                sleep 15
+                
+                # Verify container is running
+                docker ps | grep fastapi-test-${BUILD_NUMBER} || exit 1
+                echo "✅ Container running"
+                
+                # Install curl in container
+                docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
+                
+                # Test /processes endpoint and save to file for easier handling
+                docker exec fastapi-test-${BUILD_NUMBER} curl -s http://localhost:8000/processes > response.json
+                
+                echo "Response received:"
+                cat response.json
+                
+                # Validate JSON format
+                cat response.json | python3 -m json.tool > /dev/null || exit 1
+                echo "✅ Valid JSON response"
+                
+                # Count processes
+                PROCESS_COUNT=\$(cat response.json | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
+                echo "📊 Processes found: \$PROCESS_COUNT"
+                
+                # Ensure we got some processes
+                [ \$PROCESS_COUNT -gt 0 ] && echo "✅ Process monitoring working" || exit 1
+                
+                # Cleanup temp file
+                rm -f response.json
+            """
+        }
+        
+        stage('Cleanup Test Container') {
+            sh "docker stop fastapi-test-${BUILD_NUMBER} && docker rm fastapi-test-${BUILD_NUMBER}"
+        }
+        
+        stage('Push to Docker Hub') {
+            echo "Pushing to Docker Hub..."
+            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                sh """
+                    # Login to Docker Hub
+                    echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                    
+                    # Tag images for Docker Hub
+                    docker tag ${imageName}:${imageTag} ${dockerHubRepo}:${imageTag}
+                    docker tag ${imageName}:latest ${dockerHubRepo}:latest
+                    
+                    # Push both tags
+                    docker push ${dockerHubRepo}:${imageTag}
+                    docker push ${dockerHubRepo}:latest
+                    
+                    echo "✅ Images pushed to Docker Hub:"
+                    echo "  - ${dockerHubRepo}:${imageTag}"
+                    echo "  - ${dockerHubRepo}:latest"
+                """
+            }
+        }
+        
+        stage('Cleanup Local Images') {
+            echo "Cleaning up local images..."
+            sh """
+                # Keep only the latest 3 builds locally
+                docker images ${imageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
+            """
+        }
+        
+        echo "🎉 Pipeline completed successfully!"
+        echo "✅ Built: ${imageName}:${imageTag}"
+        echo "✅ /processes endpoint tested and working"
+        echo "✅ Pushed to Docker Hub: ${dockerHubRepo}"
+        
+    } catch (Exception e) {
+        echo "❌ Pipeline failed: ${e.getMessage()}"
+        sh "docker stop fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
+        sh "docker rm fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
+        throw e
+    }
+}

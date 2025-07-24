@@ -1,0 +1,7 @@
+fastapi==0.104.1
+
+# psutil enables us to get information on running processes
+psutil==5.9.6
+
+# server for running FastAPI app
+uvicorn[standard]==0.24.0
