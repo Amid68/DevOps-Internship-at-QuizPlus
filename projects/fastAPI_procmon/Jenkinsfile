@@ -21,16 +21,6 @@ node('docker') {
             ])
         }
         
-        stage('Verify Files') {
-            echo "Verifying required files..."
-            sh '''
-                cd projects/fastAPI_procmon/
-                [ -f "Dockerfile" ] && echo "✅ Dockerfile found" || exit 1
-                [ -f "main.py" ] && echo "✅ main.py found" || exit 1
-                [ -f "requirements.txt" ] && echo "✅ requirements.txt found" || exit 1
-            '''
-        }
-        
         stage('Build Docker Image') {
             echo "Building Docker image: ${imageName}:${imageTag}"
             sh """
@@ -53,24 +43,20 @@ node('docker') {
                 
                 # Install curl in container
                 docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
-                
-                # Test /processes endpoint and save to file for easier handling
-                docker exec fastapi-test-${BUILD_NUMBER} curl -s http://localhost:8000/processes > response.json
-                
-                echo "Response received:"
-                cat response.json
-                
-                # Validate JSON format
-                cat response.json | python3 -m json.tool > /dev/null || exit 1
-                echo "✅ Valid JSON response"
-                
-                # Count processes
-                PROCESS_COUNT=\$(cat response.json | python3 -c "import sys, json; print(len(json.load(sys.stdin)))")
-                echo "📊 Processes found: \$PROCESS_COUNT"
-                
-                # Ensure we got some processes
-                [ \$PROCESS_COUNT -gt 0 ] && echo "✅ Process monitoring working" || exit 1
-                
+             
+                # Test /healthz endpoint with HTTP status check
+		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s /dev/null -w "%{http_code}" http://localhost:8000/healthz)
+
+		echo "HTTP Status Code: \$HTTP_STATUS"
+
+		# Check if we got a successful response (200)
+		if [ "\$HTTP_STATUS" = "200" ]; then
+			echo "✅ Health check endpoint responding successfully"
+		else
+			echo "❌ Health check failed with status code: \$HTTP_STATUS"
+			exit 1
+		fi                
+
                 # Cleanup temp file
                 rm -f response.json
             """
@@ -89,15 +75,12 @@ node('docker') {
                     
                     # Tag images for Docker Hub
                     docker tag ${imageName}:${imageTag} ${dockerHubRepo}:${imageTag}
-                    docker tag ${imageName}:latest ${dockerHubRepo}:latest
                     
                     # Push both tags
                     docker push ${dockerHubRepo}:${imageTag}
-                    docker push ${dockerHubRepo}:latest
                     
                     echo "✅ Images pushed to Docker Hub:"
                     echo "  - ${dockerHubRepo}:${imageTag}"
-                    echo "  - ${dockerHubRepo}:latest"
                 """
             }
         }

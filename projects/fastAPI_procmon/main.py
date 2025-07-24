@@ -35,3 +35,7 @@ def get_processes_by_memory(limit=50):
 @app.get("/processes")
 def get_procs():
     return get_processes_by_memory()
+
+@app.get("/healthz")
+def health_check():
+    return {"status": "healthy"}
