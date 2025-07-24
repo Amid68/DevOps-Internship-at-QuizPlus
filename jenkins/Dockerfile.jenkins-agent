@@ -1,0 +1,15 @@
+FROM jenkins/inbound-agent:latest
+
+# Minimal version - just install Docker CLI
+USER root
+
+# Install only Docker CLI (smaller and faster)
+RUN apt-get update && \
+    apt-get install -y docker.io && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    usermod -aG docker jenkins
+
+USER jenkins
+
+ENTRYPOINT ["/usr/local/bin/jenkins-agent"]

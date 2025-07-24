@@ -21,7 +21,7 @@ services:
     restart: unless-stopped
 
   jenkins-agent:
-    image: jenkins/inbound-agent:latest
+    image: jenkins-agent-with-dockerio:latest
     container_name: jenkins-agent
     user: jenkins
     depends_on:
@@ -42,7 +42,8 @@ services:
 
 volumes:
   jenkins_home:
-    driver: local
+    external: true
+    name: jenkins_home  # Use original volume
   jenkins_agent_home:
     driver: local
   jenkins_agent_workspace:
