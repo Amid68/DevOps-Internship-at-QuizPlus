@@ -78,7 +78,10 @@ node('docker') {
                     
                     # Push both tags
                     docker push ${dockerHubRepo}:${imageTag}
-                    
+
+		    # CLEAN UP: Remove Docker Hub tagged image locally after push
+                    docker rmi ${dockerHubRepo}:${imageTag} || true
+		    
                     echo "✅ Images pushed to Docker Hub:"
                     echo "  - ${dockerHubRepo}:${imageTag}"
                 """
