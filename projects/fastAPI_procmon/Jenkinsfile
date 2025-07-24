@@ -45,8 +45,7 @@ node('docker') {
                 docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
              
                 # Test /healthz endpoint with HTTP status check
-		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-
+		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
 		echo "HTTP Status Code: \$HTTP_STATUS"
 
 		# Check if we got a successful response (200)
