@@ -32,7 +32,7 @@ node('docker') {
             ])
 
             def actualBranch = sh(
-                script: "git rev-parse --abrev-ref HEAD",
+                script: "git rev-parse --abbrev-ref HEAD",
                 returnStdout: true
             ).trim()
 
