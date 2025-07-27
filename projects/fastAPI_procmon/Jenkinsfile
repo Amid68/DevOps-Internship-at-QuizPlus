@@ -1,26 +1,53 @@
 node('docker') {
+    def branchEnvironmentMap = [
+        'main': 'prod',
+        'dev': 'dev'
+    ]
+
+    def currentBranch = env.BRANCH_NAME ?: 'unkown'
+    def environment = branchEnvironmentMap[currentBranch]
+
+    if (!environment) {
+        error("Unsupported branch: ${currentBranch}. Supported branches: ${branchEnvironmentMap.keySet()}")
+    }
+
+    echo "Building branch '${currentBranch}' for '${environment}' environment"
+
     def imageName = 'fastapi-procmon'
     def imageTag = "${BUILD_NUMBER}"
-    def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
-    
+    def dockerHubRepo = 'amid68/fastapi-procmon'
+    def dockerHubTag = "${environment}-${imageTag}"
+    def fullImageName = "${dockerHubRepo}:${dockerHubTag}"
+
     try {
         stage('Checkout') {
-            echo "Checking out repository..."
+            echo "Checking out repository for branch: ${currentBranch}"
             checkout([
                 $class: 'GitSCM',
-                branches: [[name: '*/fastAPI_Process_Monitor']],
+                branches: [[name: "*/${currentBranch}"]],
                 userRemoteConfigs: [[
                     url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git',
                     credentialsId: 'github-credentials'
                 ]]
             ])
+
+            def actualBranch = sh(
+                script: "git rev-parse --abrev-ref HEAD",
+                returnStdout: true
+            ).trim()
+
+            echo "✅ Successfully checked out branch: ${actualBranch}"
+
+            if (actualBranch != currentBranch) {
+                error("Branch mismatch! Expected: ${currentBranch}, Got: ${actualBranch}")
+            }
         }
         
         stage('Build Docker Image') {
-            echo "Building Docker image: ${imageName}:${imageTag}"
+            echo "Building Docker image: ${fullImageName}"
             sh """
                 cd projects/fastAPI_procmon/
-                docker build -t ${imageName}:${imageTag} .
+                docker build -t ${fullImageName} .
                 
             """
         }
@@ -29,35 +56,32 @@ node('docker') {
             echo "Testing the /processes endpoint..."
             sh """
                 # Start test container
-                docker run -d --name fastapi-test-${BUILD_NUMBER} ${imageName}:${imageTag}
+                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
                 sleep 15
                 
                 # Verify container is running
-                docker ps | grep fastapi-test-${BUILD_NUMBER} || exit 1
+                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
                 echo "✅ Container running"
                 
                 # Install curl in container
-                docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
+                docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
              
                 # Test /healthz endpoint with HTTP status check
-		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-		echo "HTTP Status Code: \$HTTP_STATUS"
+		        HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
+		        echo "HTTP Status Code: \$HTTP_STATUS"
 
-		# Check if we got a successful response (200)
-		if [ "\$HTTP_STATUS" = "200" ]; then
-			echo "✅ Health check endpoint responding successfully"
-		else
-			echo "❌ Health check failed with status code: \$HTTP_STATUS"
-			exit 1
-		fi                
-
-                # Cleanup temp file
-                rm -f response.json
+		        # Check if we got a successful response (200)
+		        if [ "\$HTTP_STATUS" = "200" ]; then
+			        echo "✅ Health check endpoint responding successfully"
+		        else
+			        echo "❌ Health check failed with status code: \$HTTP_STATUS"
+			        exit 1
+		        fi                
             """
         }
         
         stage('Cleanup Test Container') {
-            sh "docker stop fastapi-test-${BUILD_NUMBER} && docker rm fastapi-test-${BUILD_NUMBER}"
+            sh "docker stop fastapi-test-${environment}-${BUILD_NUMBER} && docker rm fastapi-test-${environment}-${BUILD_NUMBER}"
         }
         
         stage('Push to Docker Hub') {
@@ -67,16 +91,16 @@ node('docker') {
                     # Login to Docker Hub
                     echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
                     
-                    # Tag images for Docker Hub
-                    docker tag ${imageName}:${imageTag} ${dockerHubRepo}:${imageTag}
+                    docker push ${fullImageName}
                     
-                    docker push ${dockerHubRepo}:${imageTag}
-
-		    # CLEAN UP: Remove Docker Hub tagged image locally after push
-                    docker rmi ${dockerHubRepo}:${imageTag} || true
-		    
-                    echo "✅ Images pushed to Docker Hub:"
-                    echo "  - ${dockerHubRepo}:${imageTag}"
+                    # Verify the push was successful
+                    echo "✅ Successfully pushed to Docker Hub:"
+                    echo "   Repository: ${dockerHubRepo}"
+                    echo "   Tag: ${dockerHubTag}"
+                    echo "   Full image: ${fullImageName}"
+            
+                    # Logout for security
+                    docker logout
                 """
             }
         }
