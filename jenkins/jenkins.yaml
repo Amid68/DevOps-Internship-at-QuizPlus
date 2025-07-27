@@ -1,0 +1,49 @@
+jenkins:
+	clouds:
+		- docker:
+			name: "docker-local"
+			dockerApi:
+				dockerHost:
+					uri: "unix:///var/run/docker.sock"
+			exposeDockerHost: false
+			containerCap: 100
+			templates:
+				- dockerTemplate:
+					labelString: "docker"
+					name: "docker-agent"
+					image: "jenkins-agent-with-dockerio:latest"
+					remoteFs: "/home/jenkins/agent"
+					instanceCapacity: 10
+					mode: NORMAL
+					retentionStrategy:
+						idleMinutes: 10
+					dockerCommand: ""
+					volumesString: "type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock"
+					volumesFromString: ""
+					environmentsString: ""
+					hostname: ""
+					memoryLimit: null
+					memorySwap: null
+					cpuShares: null
+					shmSize: null
+					network: "jenkins-network"
+					dnsString: ""
+					extraGroupsString: "990"
+					securityOptsString: ""
+					capAddString: ""
+					capDropString: ""
+					privileged: false
+					tty: false
+					macAddress: ""
+					extraHostsString: ""
+					extraDockerLabelsString: ""
+					connector:
+						attach:
+							user: ""
+					removeVolumes: false
+					stopTimeout: 10
+					pullStrategy: PULL_NEVER
+					pullTimeout: 300
+					disabled: false
+					bindAllPorts: false
+					bindPorts: ""
