@@ -4,11 +4,6 @@ node('docker') {
     def dockerHubRepo = 'amid68/devops-internship-at-quizplus'
     
     try {
-        stage('Cleanup Workspace') {
-            echo "Cleaning workspace..."
-            deleteDir()
-        }
-        
         stage('Checkout') {
             echo "Checking out repository..."
             checkout([
@@ -30,7 +25,7 @@ node('docker') {
             """
         }
         
-        stage('Test /processes Endpoint') {
+        stage('Test /healthz Endpoint') {
             echo "Testing the /processes endpoint..."
             sh """
                 # Start test container
@@ -45,8 +40,7 @@ node('docker') {
                 docker exec fastapi-test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
              
                 # Test /healthz endpoint with HTTP status check
-		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-
+		HTTP_STATUS=\$(docker exec fastapi-test-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
 		echo "HTTP Status Code: \$HTTP_STATUS"
 
 		# Check if we got a successful response (200)
@@ -76,7 +70,6 @@ node('docker') {
                     # Tag images for Docker Hub
                     docker tag ${imageName}:${imageTag} ${dockerHubRepo}:${imageTag}
                     
-                    # Push both tags
                     docker push ${dockerHubRepo}:${imageTag}
 
 		    # CLEAN UP: Remove Docker Hub tagged image locally after push
