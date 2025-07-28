@@ -71,7 +71,6 @@ node {
 	            sh """
 	                # Start test container
 	                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
-	                sleep 15
 	                
 	                # Verify container is running
 	                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
