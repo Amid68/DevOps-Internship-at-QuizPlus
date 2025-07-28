@@ -121,6 +121,7 @@ node {
 	        
 	            withCredentials([sshUserPrivateKey(credentialsId: 'ubuntu-server-ssh', keyFileVariable: 'SSH_KEY')]) {
 	                sh """
+	                    cd projects/fastAPI_procmon/
 	                    ansible-playbook -i hosts.ini deploy.yml \
 	                        --private-key \$SSH_KEY \
 	                        --extra-vars "docker_image=${fullImageName}" \
