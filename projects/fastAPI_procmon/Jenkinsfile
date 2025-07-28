@@ -1,20 +1,25 @@
 node {
     docker.image('amid68/jenkins-agent-with-dockerio').inside('-v /var/run/docker.sock:/var/run/docker.sock --group-add 990') {
-	    def branchEnvironmentMap = [
-	        'main': 'prod',
-	        'dev': 'dev'
+	    def config = [
+	        'prod': [
+                'branch': 'main',
+                'environment': 'production',
+            ],
+	        'dev': [
+                'branch': 'dev',
+                'environment': 'development',
+            ]
 	    ]
 	
 	    def currentBranch = env.BRANCH_NAME ?: 'unkown'
-	    def environment = branchEnvironmentMap[currentBranch]
+        def environment = config.find { key, value -> value.branch == currentBranch }?.value
 	
 	    if (!environment) {
-	        error("Unsupported branch: ${currentBranch}. Supported branches: ${branchEnvironmentMap.keySet()}")
+	        error("Unsupported branch: ${currentBranch}.")
 	    }
 	
 	    echo "Building branch '${currentBranch}' for '${environment}' environment"
 	
-	    def imageName = 'fastapi-procmon'
 	    def imageTag = "${BUILD_NUMBER}"
 	    def dockerHubRepo = 'amid68/fastapi-procmon'
 	    def dockerHubTag = "${environment}-${imageTag}"
@@ -107,9 +112,6 @@ node {
 	                    echo "   Repository: ${dockerHubRepo}"
 	                    echo "   Tag: ${dockerHubTag}"
 	                    echo "   Full image: ${fullImageName}"
-	            
-	                    # Logout for security
-	                    docker logout
 	                """
 	            }
 	        }
@@ -118,9 +120,25 @@ node {
 	            echo "Cleaning up local images..."
 	            sh """
 	                # Keep only the latest 3 builds locally
-	                docker images ${imageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
+	                docker images ${fullImageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
 	            """
 	        }
+
+            stage('Deploy to Ubuntu Server') {
+                echo "🚀 Deploying ${fullImageName} to Ubuntu server..."
+            
+                withCredentials([sshUserPrivateKey(credentialsId: 'ubuntu-server-ssh', keyFileVariable: 'SSH_KEY')]) {
+                    sh """
+                        ansible-playbook -i hosts.ini deploy.yml \
+                            --private-key \$SSH_KEY \
+                            --extra-vars "docker_image=${fullImageName}" \
+                            -v
+                    """
+                }
+            
+                echo "✅ Deployment completed!"
+                echo "🌐 App running at: http://192.168.64.20:8000"
+            }
 	        
 	        echo "🎉 Pipeline completed successfully!"
 	        echo "✅ Built: ${imageName}:${imageTag}"

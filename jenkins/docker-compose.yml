@@ -12,6 +12,7 @@ services:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker
+      - /etc/localtime:/etc/localtime:ro
     environment:
       - JENKINS_OPTS="--httpPort=8080"
     group_add:
