@@ -1,4 +1,5 @@
-node('docker') {
+node {
+    docker.image('amid68/jenkins-agent-with-dockerio') { c ->
     def branchEnvironmentMap = [
         'main': 'prod',
         'dev': 'dev'
@@ -131,5 +132,6 @@ node('docker') {
         sh "docker stop fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
         sh "docker rm fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
         throw e
+    }
     }
 }
