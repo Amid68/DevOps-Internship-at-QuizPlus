@@ -121,10 +121,27 @@ node {
 	            withCredentials([sshUserPrivateKey(credentialsId: 'ubuntu-server-ssh', keyFileVariable: 'SSH_KEY')]) {
 	                sh """
 	                    cd projects/fastAPI_procmon/
-	                    ansible-playbook -i hosts.ini deploy.yml \
+	                    
+	                    # Debug: Check SSH key format and permissions
+	                    echo "🔍 SSH Key Debug Info:"
+	                    file \$SSH_KEY
+	                    ls -la \$SSH_KEY
+	                    head -n 1 \$SSH_KEY
+	                    
+	                    # Set proper permissions for SSH key
+	                    chmod 600 \$SSH_KEY
+	                    
+	                    # Test SSH connection first
+	                    echo "🔍 Testing SSH connection..."
+	                    ssh -i \$SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 amid@192.168.64.20 "echo 'SSH connection successful'"
+	                    
+	                    # Run ansible with debugging
+	                    echo "🚀 Running Ansible deployment..."
+	                    ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
+	                        -i hosts.ini deploy.yml \
 	                        --private-key \$SSH_KEY \
 	                        --extra-vars "docker_image=${fullImageName}" \
-	                        -v
+	                        -vvv
 	                """
 	            }
 	        
