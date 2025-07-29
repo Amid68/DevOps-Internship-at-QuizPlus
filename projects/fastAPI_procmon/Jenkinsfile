@@ -116,37 +116,67 @@ node {
 	        }
 
             stage('Deploy to Ubuntu Server with Ansible') {
-                echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
-    
-                withCredentials([sshUserPrivateKey(
-                    credentialsId: 'ubuntu-server-ssh-key',
-                    keyFileVariable: 'SSH_KEY',
-                    usernameVariable: 'SSH_USER'
-                )]) {
-                    sh '''
-                        cd projects/fastAPI_procmon/ansible
-            
-                        # Copy SSH key to temporary location for Ansible
-                        cp ${SSH_KEY} /tmp/ssh_key
-                        chmod 600 /tmp/ssh_key
-            
-                        echo "🔍 Testing Ansible connectivity..."
-                        ansible ubuntu_servers -m ping
-            
-                        echo "🚀 Running Ansible deployment playbook..."
-                        ansible-playbook deploy.yml \
-                            -e "image_name=''' + fullImageName + '''" \
-                            -e "environment=''' + environment + '''" \
-                            -v
-            
-                        echo "✅ Ansible deployment completed!"
-                        echo "🌐 Application should be available at: http://192.168.64.20:8000"
-            
-                        # Cleanup temporary SSH key
-                        rm -f /tmp/ssh_key
-                    '''
-                }
-            }
+		    echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
+		    
+		    withCredentials([sshUserPrivateKey(
+		        credentialsId: 'ubuntu-server-ssh-key',
+		        keyFileVariable: 'SSH_KEY',
+		        usernameVariable: 'SSH_USER'
+		    )]) {
+		        sh '''
+		            cd projects/fastAPI_procmon/ansible
+		            
+		            # Copy SSH key to temporary location for Ansible
+		            cp ${SSH_KEY} /tmp/ssh_key
+		            chmod 600 /tmp/ssh_key
+		            
+		            echo "🔍 === DEBUGGING SSH SETUP ==="
+		            echo "SSH User: ${SSH_USER}"
+		            echo "SSH Key file details:"
+		            ls -la /tmp/ssh_key
+		            echo "SSH Key first few lines (to verify format):"
+		            head -2 /tmp/ssh_key
+		            echo "SSH Key last few lines:"
+		            tail -2 /tmp/ssh_key
+		            
+		            echo "🔍 === TESTING DIRECT SSH CONNECTION ==="
+		            echo "Testing SSH connection directly (not through Ansible):"
+		            ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@192.168.64.20 whoami || echo "❌ Direct SSH failed"
+		            
+		            echo "🔍 === ANSIBLE CONFIGURATION CHECK ==="
+		            echo "Current working directory:"
+		            pwd
+		            echo "Ansible configuration file:"
+		            cat ansible.cfg
+		            echo "Inventory file:"
+		            cat inventory.ini
+		            
+		            echo "🔍 === TESTING ANSIBLE CONNECTIVITY ==="
+		            echo "Testing Ansible connectivity with verbose output:"
+		            ansible ubuntu_servers -m ping -vvv
+		            
+		            # Only proceed with deployment if ping succeeds
+		            if ansible ubuntu_servers -m ping; then
+		                echo "✅ Ansible connectivity successful, proceeding with deployment..."
+		                
+		                echo "🚀 Running Ansible deployment playbook..."
+		                ansible-playbook deploy.yml \
+		                    -e "image_name=''' + fullImageName + '''" \
+		                    -e "environment=''' + environment + '''" \
+		                    -v
+		                
+		                echo "✅ Ansible deployment completed!"
+		                echo "🌐 Application should be available at: http://192.168.64.20:8000"
+		            else
+		                echo "❌ Ansible connectivity failed, skipping deployment"
+		                exit 1
+		            fi
+		            
+		            # Cleanup temporary SSH key
+		            rm -f /tmp/ssh_key
+		        '''
+		    }
+		}
 	        
 	        stage('Cleanup Local Images') {
 	            echo "Cleaning up local images..."
