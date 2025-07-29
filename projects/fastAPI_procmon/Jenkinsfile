@@ -115,23 +115,6 @@ node {
 	            }
 	        }
 
-
-            stage('Debug Permissions') {
-                sh '''
-                    echo "=== Current User Info ==="
-                    id
-                    whoami
-                    echo "=== Docker Socket Info ==="
-                    ls -la /var/run/docker.sock
-                    echo "=== Group Memberships ==="
-                    groups
-                    echo "=== Docker Test ==="
-                    docker --version || echo "❌ Docker not accessible"
-                    docker ps || echo "❌ Cannot list containers"
-                '''
-            }
-
-	        
 	        stage('Deploy to Ubuntu Server') {
 	            echo "🚀 Deploying ${fullImageName} to Ubuntu server..."
 	        
