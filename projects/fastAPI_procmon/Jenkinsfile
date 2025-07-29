@@ -162,7 +162,7 @@ node {
 		                echo "🚀 Running Ansible deployment playbook..."
 		                ansible-playbook deploy.yml \
 		                    -e "image_name=''' + fullImageName + '''" \
-		                    -e "environment=''' + environment + '''" \
+		                    -e "deployment_environment=''' + environment + '''" \
 		                    -v
 		                
 		                echo "✅ Ansible deployment completed!"
