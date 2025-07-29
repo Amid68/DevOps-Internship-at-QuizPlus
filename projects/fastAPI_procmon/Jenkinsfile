@@ -115,34 +115,38 @@ node {
 	            }
 	        }
 
-	        stage('Deploy to Ubuntu Server') {
-		    echo "🚀 Deploying ${fullImageName} to Ubuntu server..."
-		    
-		    withCredentials([sshUserPrivateKey(
-		        credentialsId: 'ubuntu-server-ssh-key',
-		        keyFileVariable: 'SSH_KEY',
-		        usernameVariable: 'SSH_USER'
-		    )]) {
-		        sh '''
-		            # Set proper permissions for SSH key
-		            chmod 600 ${SSH_KEY}
-		            
-		            echo "🔍 Testing SSH connection..."
-		            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@192.168.64.20 whoami && echo "SSH connection successful"
-		            
-		            echo "🛑 Stopping existing container (if running)..."
-		            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@192.168.64.20 "docker stop fastapi-procmon-''' + environment + ''' || true"
-		            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@192.168.64.20 "docker rm fastapi-procmon-''' + environment + ''' || true"
-		            
-		            echo "🚀 Pulling and starting new container..."
-		            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@192.168.64.20 "docker pull ''' + fullImageName + '''"
-		            ssh -i ${SSH_KEY} -o StrictHostKeyChecking=no ${SSH_USER}@192.168.64.20 "docker run -d --name fastapi-procmon-''' + environment + ''' -p 8000:8000 ''' + fullImageName + '''"
-		            
-		            echo "✅ Deployment completed!"
-		            echo "🌐 Application should be available at: http://192.168.64.20:8000"
-		        '''
-		    }
-		}
+            stage('Deploy to Ubuntu Server with Ansible') {
+                echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
+    
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ubuntu-server-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh '''
+                        cd projects/fastAPI_procmon/ansible
+            
+                        # Copy SSH key to temporary location for Ansible
+                        cp ${SSH_KEY} /tmp/ssh_key
+                        chmod 600 /tmp/ssh_key
+            
+                        echo "🔍 Testing Ansible connectivity..."
+                        ansible ubuntu_servers -m ping
+            
+                        echo "🚀 Running Ansible deployment playbook..."
+                        ansible-playbook deploy.yml \
+                            -e "image_name=''' + fullImageName + '''" \
+                            -e "environment=''' + environment + '''" \
+                            -v
+            
+                        echo "✅ Ansible deployment completed!"
+                        echo "🌐 Application should be available at: http://192.168.64.20:8000"
+            
+                        # Cleanup temporary SSH key
+                        rm -f /tmp/ssh_key
+                    '''
+                }
+            }
 	        
 	        stage('Cleanup Local Images') {
 	            echo "Cleaning up local images..."
