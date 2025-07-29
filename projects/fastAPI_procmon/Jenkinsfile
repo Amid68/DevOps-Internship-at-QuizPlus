@@ -11,10 +11,11 @@ node {
             ]
 	    ]
 	
-	    def currentBranch = env.BRANCH_NAME ?: 'unkown'
-        def environment = config.find { key, value -> value.branch == currentBranch }?.value
+	    def currentBranch = env.BRANCH_NAME ?: 'unknown'
+        def environmentConfig = config.find { key, value -> value.branch == currentBranch }?.value
+        def environment = environmentConfig?.environment  // FIX: Extract just the environment string
 	
-	    if (!environment) {
+	    if (!environmentConfig) {
 	        error("Unsupported branch: ${currentBranch}.")
 	    }
 	
@@ -62,16 +63,14 @@ node {
 	            sh """
 	                cd projects/fastAPI_procmon/
 	                docker build -t ${fullImageName} .
-	                
 	            """
 	        }
 	        
 	        stage('Test /healthz Endpoint') {
-	            echo "Testing the /processes endpoint..."
+	            echo "Testing the /healthz endpoint..."
 	            sh """
 	                # Start test container
 	                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
-	                sleep 15
 	                
 	                # Verify container is running
 	                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
@@ -115,55 +114,69 @@ node {
 	                """
 	            }
 	        }
+
+
+            stage('Debug Permissions') {
+                sh '''
+                    echo "=== Current User Info ==="
+                    id
+                    whoami
+                    echo "=== Docker Socket Info ==="
+                    ls -la /var/run/docker.sock
+                    echo "=== Group Memberships ==="
+                    groups
+                    echo "=== Docker Test ==="
+                    docker --version || echo "❌ Docker not accessible"
+                    docker ps || echo "❌ Cannot list containers"
+                '''
+            }
+
+	        
+	        stage('Deploy to Ubuntu Server') {
+	            echo "🚀 Deploying ${fullImageName} to Ubuntu server..."
+	        
+	            withCredentials([sshUserPrivateKey(credentialsId: 'ubuntu-server-ssh', keyFileVariable: 'SSH_KEY')]) {
+	                sh """
+	                    cd projects/fastAPI_procmon/
+	                    
+	                    # Set proper permissions for SSH key
+	                    chmod 600 \$SSH_KEY
+	                    
+	                    # Test SSH connection first
+	                    echo "🔍 Testing SSH connection..."
+	                    ssh -i \$SSH_KEY -o StrictHostKeyChecking=no -o ConnectTimeout=10 amid@192.168.64.20 "whoami && echo 'SSH connection successful'"
+	                    
+	                    # If SSH test passes, run Ansible
+	                    echo "🚀 Running Ansible deployment..."
+	                    ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
+	                        -i hosts.ini deploy.yml \
+	                        --private-key \$SSH_KEY \
+	                        --extra-vars "docker_image=${fullImageName}" \
+	                        -v
+	                """
+	            }
+	        
+	            echo "✅ Deployment completed!"
+	            echo "🌐 App running at: http://192.168.64.20:8000"
+	        }
 	        
 	        stage('Cleanup Local Images') {
 	            echo "Cleaning up local images..."
 	            sh """
 	                # Keep only the latest 3 builds locally
-	                docker images ${fullImageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
+	                docker images ${dockerHubRepo} --format "table {{.Tag}}" | grep -E '^(development|production)-[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${dockerHubRepo}:{} || true
 	            """
 	        }
-
-            stage('Debug Permissions') {
-               sh '''
-                 echo "=== Current User Info ==="
-                 id
-                 whoami
-                 echo "=== Docker Socket Info ==="
-                 ls -la /var/run/docker.sock
-                 echo "=== Group Memberships ==="
-                 groups
-                 echo "=== Docker Test ==="
-                 docker --version || echo "❌ Docker not accessible"
-                 docker ps || echo "❌ Cannot list containers"
-                '''
-            }
-
-            stage('Deploy to Ubuntu Server') {
-                echo "🚀 Deploying ${fullImageName} to Ubuntu server..."
-            
-                withCredentials([sshUserPrivateKey(credentialsId: 'ubuntu-server-ssh', keyFileVariable: 'SSH_KEY')]) {
-                    sh """
-                        ansible-playbook -i hosts.ini deploy.yml \
-                            --private-key \$SSH_KEY \
-                            --extra-vars "docker_image=${fullImageName}" \
-                            -v
-                    """
-                }
-            
-                echo "✅ Deployment completed!"
-                echo "🌐 App running at: http://192.168.64.20:8000"
-            }
 	        
 	        echo "🎉 Pipeline completed successfully!"
-	        echo "✅ Built: ${imageName}:${imageTag}"
-	        echo "✅ /processes endpoint tested and working"
+	        echo "✅ Built: ${fullImageName}"
+	        echo "✅ /healthz endpoint tested and working"
 	        echo "✅ Pushed to Docker Hub: ${dockerHubRepo}"
 	        
 	    } catch (Exception e) {
 	        echo "❌ Pipeline failed: ${e.getMessage()}"
-	        sh "docker stop fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
-	        sh "docker rm fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
+	        sh "docker stop fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
+	        sh "docker rm fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
 	        throw e
 	    }
     }
