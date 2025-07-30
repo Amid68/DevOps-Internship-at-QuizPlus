@@ -1,0 +1,73 @@
+---
+- name: Deploy FastAPI Application with Docker
+  hosts: ubuntu_servers
+  become: false
+  gather_facts: false
+  vars:
+    app_name: "fastapi-procmon"
+    container_name: "{{ app_name }}-{{ deployment_environment }}"
+    docker_image: "{{ image_name }}"
+    app_port: 8000
+    host_port: 8000
+
+  tasks:
+    - name: Print deployment information
+      debug:
+        msg: 
+          - "Deploying {{ docker_image }}"
+          - "Container name: {{ container_name }}"
+          - "Environment: {{ deployment_environment }}"
+
+    - name: Stop existing container (if running)
+      docker_container:
+        name: "{{ container_name }}"
+        state: stopped
+      ignore_errors: true
+      register: stop_result
+
+    - name: Remove existing container (if exists)
+      docker_container:
+        name: "{{ container_name }}"
+        state: absent
+      ignore_errors: true
+      register: remove_result
+
+    - name: Pull Docker image
+      docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+        force_source: true
+      register: pull_result
+
+    - name: Start new container
+      docker_container:
+        name: "{{ container_name }}"
+        image: "{{ docker_image }}"
+        state: started
+        restart_policy: unless-stopped
+        ports:
+          - "{{ host_port }}:{{ app_port }}"
+        healthcheck:
+          test: ["CMD", "curl", "-f", "http://localhost:{{ app_port }}/healthz"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+      register: container_result
+
+    - name: Wait for application to be ready
+      uri:
+        url: "http://{{ ansible_host }}:{{ host_port }}/healthz"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+      register: health_check
+
+    - name: Display deployment results
+      debug:
+        msg:
+          - "✅ Deployment completed successfully!"
+          - "🌐 Application is available at: http://{{ ansible_host }}:{{ host_port }}"
+          - "🔍 Health check: http://{{ ansible_host }}:{{ host_port }}/healthz"
+          - "📊 Process monitor: http://{{ ansible_host }}:{{ host_port }}/processes"

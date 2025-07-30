@@ -1,20 +1,26 @@
 node {
     docker.image('amid68/jenkins-agent-with-dockerio').inside('-v /var/run/docker.sock:/var/run/docker.sock --group-add 990') {
-	    def branchEnvironmentMap = [
-	        'main': 'prod',
-	        'dev': 'dev'
+	    def config = [
+	        'prod': [
+                'branch': 'main',
+                'environment': 'production',
+            ],
+	        'dev': [
+                'branch': 'dev',
+                'environment': 'development',
+            ]
 	    ]
 	
-	    def currentBranch = env.BRANCH_NAME ?: 'unkown'
-	    def environment = branchEnvironmentMap[currentBranch]
+	    def currentBranch = env.BRANCH_NAME ?: 'unknown'
+        def environmentConfig = config.find { key, value -> value.branch == currentBranch }?.value
+        def environment = environmentConfig?.environment  // FIX: Extract just the environment string
 	
-	    if (!environment) {
-	        error("Unsupported branch: ${currentBranch}. Supported branches: ${branchEnvironmentMap.keySet()}")
+	    if (!environmentConfig) {
+	        error("Unsupported branch: ${currentBranch}.")
 	    }
 	
 	    echo "Building branch '${currentBranch}' for '${environment}' environment"
 	
-	    def imageName = 'fastapi-procmon'
 	    def imageTag = "${BUILD_NUMBER}"
 	    def dockerHubRepo = 'amid68/fastapi-procmon'
 	    def dockerHubTag = "${environment}-${imageTag}"
@@ -57,16 +63,14 @@ node {
 	            sh """
 	                cd projects/fastAPI_procmon/
 	                docker build -t ${fullImageName} .
-	                
 	            """
 	        }
 	        
 	        stage('Test /healthz Endpoint') {
-	            echo "Testing the /processes endpoint..."
+	            echo "Testing the /healthz endpoint..."
 	            sh """
 	                # Start test container
 	                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
-	                sleep 15
 	                
 	                # Verify container is running
 	                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
@@ -107,30 +111,90 @@ node {
 	                    echo "   Repository: ${dockerHubRepo}"
 	                    echo "   Tag: ${dockerHubTag}"
 	                    echo "   Full image: ${fullImageName}"
-	            
-	                    # Logout for security
-	                    docker logout
 	                """
 	            }
 	        }
+
+            stage('Deploy to Ubuntu Server with Ansible') {
+		    echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
+		    
+		    withCredentials([sshUserPrivateKey(
+		        credentialsId: 'ubuntu-server-ssh-key',
+		        keyFileVariable: 'SSH_KEY',
+		        usernameVariable: 'SSH_USER'
+		    )]) {
+		        sh '''
+		            cd projects/fastAPI_procmon/ansible
+		            
+		            # Copy SSH key to temporary location for Ansible
+		            cp ${SSH_KEY} /tmp/ssh_key
+		            chmod 600 /tmp/ssh_key
+		            
+		            echo "🔍 === DEBUGGING SSH SETUP ==="
+		            echo "SSH User: ${SSH_USER}"
+		            echo "SSH Key file details:"
+		            ls -la /tmp/ssh_key
+		            echo "SSH Key first few lines (to verify format):"
+		            head -2 /tmp/ssh_key
+		            echo "SSH Key last few lines:"
+		            tail -2 /tmp/ssh_key
+		            
+		            echo "🔍 === TESTING DIRECT SSH CONNECTION ==="
+		            echo "Testing SSH connection directly (not through Ansible):"
+		            ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@192.168.64.20 whoami || echo "❌ Direct SSH failed"
+		            
+		            echo "🔍 === ANSIBLE CONFIGURATION CHECK ==="
+		            echo "Current working directory:"
+		            pwd
+		            echo "Ansible configuration file:"
+		            cat ansible.cfg
+		            echo "Inventory file:"
+		            cat inventory.ini
+		            
+		            echo "🔍 === TESTING ANSIBLE CONNECTIVITY ==="
+		            echo "Testing Ansible connectivity with verbose output:"
+		            ansible ubuntu_servers -m ping -vvv
+		            
+		            # Only proceed with deployment if ping succeeds
+		            if ansible ubuntu_servers -m ping; then
+		                echo "✅ Ansible connectivity successful, proceeding with deployment..."
+		                
+		                echo "🚀 Running Ansible deployment playbook..."
+		                ansible-playbook deploy.yml \
+		                    -e "image_name=''' + fullImageName + '''" \
+		                    -e "deployment_environment=''' + environment + '''" \
+		                    -v
+		                
+		                echo "✅ Ansible deployment completed!"
+		                echo "🌐 Application should be available at: http://192.168.64.20:8000"
+		            else
+		                echo "❌ Ansible connectivity failed, skipping deployment"
+		                exit 1
+		            fi
+		            
+		            # Cleanup temporary SSH key
+		            rm -f /tmp/ssh_key
+		        '''
+		    }
+		}
 	        
 	        stage('Cleanup Local Images') {
 	            echo "Cleaning up local images..."
 	            sh """
 	                # Keep only the latest 3 builds locally
-	                docker images ${imageName} --format "table {{.Tag}}" | grep -E '^[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${imageName}:{} || true
+	                docker images ${dockerHubRepo} --format "table {{.Tag}}" | grep -E '^(development|production)-[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${dockerHubRepo}:{} || true
 	            """
 	        }
 	        
 	        echo "🎉 Pipeline completed successfully!"
-	        echo "✅ Built: ${imageName}:${imageTag}"
-	        echo "✅ /processes endpoint tested and working"
+	        echo "✅ Built: ${fullImageName}"
+	        echo "✅ /healthz endpoint tested and working"
 	        echo "✅ Pushed to Docker Hub: ${dockerHubRepo}"
 	        
 	    } catch (Exception e) {
 	        echo "❌ Pipeline failed: ${e.getMessage()}"
-	        sh "docker stop fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
-	        sh "docker rm fastapi-test-${BUILD_NUMBER} 2>/dev/null || true"
+	        sh "docker stop fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
+	        sh "docker rm fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
 	        throw e
 	    }
     }
