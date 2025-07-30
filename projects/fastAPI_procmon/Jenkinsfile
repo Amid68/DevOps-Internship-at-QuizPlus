@@ -37,7 +37,6 @@ node {
 	                ]],
 	            ])
 	        }
-	   } 
 	 
 	        stage('Build Docker Image') {
 	            sh """
