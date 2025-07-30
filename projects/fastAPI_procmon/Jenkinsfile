@@ -130,31 +130,6 @@ node {
 		            cp ${SSH_KEY} /tmp/ssh_key
 		            chmod 600 /tmp/ssh_key
 		            
-		            echo "🔍 === DEBUGGING SSH SETUP ==="
-		            echo "SSH User: ${SSH_USER}"
-		            echo "SSH Key file details:"
-		            ls -la /tmp/ssh_key
-		            echo "SSH Key first few lines (to verify format):"
-		            head -2 /tmp/ssh_key
-		            echo "SSH Key last few lines:"
-		            tail -2 /tmp/ssh_key
-		            
-		            echo "🔍 === TESTING DIRECT SSH CONNECTION ==="
-		            echo "Testing SSH connection directly (not through Ansible):"
-		            ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no -o ConnectTimeout=10 ${SSH_USER}@192.168.64.20 whoami || echo "❌ Direct SSH failed"
-		            
-		            echo "🔍 === ANSIBLE CONFIGURATION CHECK ==="
-		            echo "Current working directory:"
-		            pwd
-		            echo "Ansible configuration file:"
-		            cat ansible.cfg
-		            echo "Inventory file:"
-		            cat inventory.ini
-		            
-		            echo "🔍 === TESTING ANSIBLE CONNECTIVITY ==="
-		            echo "Testing Ansible connectivity with verbose output:"
-		            ansible ubuntu_servers -m ping -vvv
-		            
 		            # Only proceed with deployment if ping succeeds
 		            if ansible ubuntu_servers -m ping; then
 		                echo "✅ Ansible connectivity successful, proceeding with deployment..."
