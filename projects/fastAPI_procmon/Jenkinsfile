@@ -13,7 +13,7 @@ node {
 	
 	    def currentBranch = env.BRANCH_NAME ?: 'unknown'
         def environmentConfig = config.find { key, value -> value.branch == currentBranch }?.value
-        def environment = environmentConfig?.environment  // FIX: Extract just the environment string
+        def environment = environmentConfig?.environment  
 	
 	    if (!environmentConfig) {
 	        error("Unsupported branch: ${currentBranch}.")
@@ -28,9 +28,6 @@ node {
 	
 	    try {
 	        stage('Checkout') {
-	            echo "🔄 Checking out repository for branch: ${currentBranch}"
-	            echo "🎯 Target environment: ${environment}"
-	    
 	            checkout([
 	                $class: 'GitSCM',
 	                branches: [[name: "*/${currentBranch}"]],
@@ -39,27 +36,10 @@ node {
 	                    credentialsId: 'github-credentials'
 	                ]],
 	            ])
-	    
-	            // Jenkins-aware branch verification
-	            echo "✅ Successfully checked out ${currentBranch} branch"
-	            echo "📝 Commit: ${env.GIT_COMMIT ?: 'unknown'}"
-	    
-	            // Alternative verification using git log (works with detached HEAD)
-	            def commitBranch = sh(
-	                script: "git log --oneline --decorate -1 | grep -o 'origin/${currentBranch}' || echo 'detached'",
-	                returnStdout: true
-	            ).trim()
-	    
-	            if (commitBranch.contains(currentBranch)) {
-	                echo "✅ Verified: Building commit from ${currentBranch} branch"
-	            } else {
-	                echo "ℹ️  Note: Building in detached HEAD state (normal for Jenkins multibranch)"
-	                echo "ℹ️  Jenkins environment confirms this is ${currentBranch} branch build"
-	            }
 	        }
+	   } 
 	 
 	        stage('Build Docker Image') {
-	            echo "Building Docker image: ${fullImageName}"
 	            sh """
 	                cd projects/fastAPI_procmon/
 	                docker build -t ${fullImageName} .
@@ -67,21 +47,18 @@ node {
 	        }
 	        
 	        stage('Test /healthz Endpoint') {
-	            echo "Testing the /healthz endpoint..."
 	            sh """
 	                # Start test container
 	                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
 	                
 	                # Verify container is running
 	                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
-	                echo "✅ Container running"
 	                
 	                # Install curl in container
 	                docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
 	             
 	                # Test /healthz endpoint with HTTP status check
 			        HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-			        echo "HTTP Status Code: \$HTTP_STATUS"
 	
 			        # Check if we got a successful response (200)
 			        if [ "\$HTTP_STATUS" = "200" ]; then
@@ -98,19 +75,12 @@ node {
 	        }
 	        
 	        stage('Push to Docker Hub') {
-	            echo "Pushing to Docker Hub..."
 	            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
 	                sh """
 	                    # Login to Docker Hub
 	                    echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
 	                    
 	                    docker push ${fullImageName}
-	                    
-	                    # Verify the push was successful
-	                    echo "✅ Successfully pushed to Docker Hub:"
-	                    echo "   Repository: ${dockerHubRepo}"
-	                    echo "   Tag: ${dockerHubTag}"
-	                    echo "   Full image: ${fullImageName}"
 	                """
 	            }
 	        }
@@ -132,15 +102,11 @@ node {
 		            
 		            # Only proceed with deployment if ping succeeds
 		            if ansible ubuntu_servers -m ping; then
-		                echo "✅ Ansible connectivity successful, proceeding with deployment..."
-		                
-		                echo "🚀 Running Ansible deployment playbook..."
 		                ansible-playbook deploy.yml \
 		                    -e "image_name=''' + fullImageName + '''" \
 		                    -e "deployment_environment=''' + environment + '''" \
 		                    -v
 		                
-		                echo "✅ Ansible deployment completed!"
 		                echo "🌐 Application should be available at: http://192.168.64.20:8000"
 		            else
 		                echo "❌ Ansible connectivity failed, skipping deployment"
@@ -154,7 +120,6 @@ node {
 		}
 	        
 	        stage('Cleanup Local Images') {
-	            echo "Cleaning up local images..."
 	            sh """
 	                # Keep only the latest 3 builds locally
 	                docker images ${dockerHubRepo} --format "table {{.Tag}}" | grep -E '^(development|production)-[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${dockerHubRepo}:{} || true
