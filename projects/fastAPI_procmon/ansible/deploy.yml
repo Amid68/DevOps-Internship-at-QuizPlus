@@ -1,7 +1,7 @@
 ---
 - name: Deploy FastAPI Application with Docker
   hosts: ec2_servers
-  become: false
+  become: true
   gather_facts: false
   vars:
     app_name: "fastapi-procmon"
@@ -11,6 +11,54 @@
     host_port: 8000
 
   tasks:
+    - name: Update apt package index
+      apt:
+        update_cache: yes
+      
+    - name: Install required packages
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        
+    - name: Add Docker's official GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+        
+    - name: Add Docker repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+        
+    - name: Install Docker CE
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+        
+    - name: Start and enable Docker service
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+        
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+        
+    # Reset SSH connection to pick up new group membership
+    - name: Reset connection
+      meta: reset_connection
+      
     - name: Stop existing container (if running)
       docker_container:
         name: "{{ container_name }}"
