@@ -2,85 +2,105 @@
 - name: Deploy FastAPI Application with Docker
   hosts: ec2_servers
   become: true
-  gather_facts: true  # Changed to true since we need distribution info
+  gather_facts: true
   vars:
     app_name: "fastapi-procmon"
     container_name: "{{ app_name }}-{{ deployment_environment }}"
     docker_image: "{{ image_name }}"
     app_port: 8000
     host_port: 8000
+    docker_packages:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    old_docker_packages:
+      - docker.io
+      - docker-doc
+      - docker-compose
+      - docker-compose-v2
+      - podman-docker
+      - containerd
+      - runc
+
+  handlers:
+    - name: reset_connection
+      meta: reset_connection
+
   tasks:
-    # Remove old Docker packages
-    - name: Remove old Docker packages
-      shell: |
-        for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
-          apt-get remove -y $pkg 2>/dev/null || true
-        done
-      ignore_errors: true
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_installed
+      failed_when: false
+      changed_when: false
+      become_user: ubuntu
 
-    # Update apt and install prerequisites
-    - name: Update apt and install prerequisites
-      shell: |
-        apt-get update
-        apt-get install -y ca-certificates curl
+    - name: Install Docker (if not present)
+      block:
+        - name: Remove old Docker packages
+          package:
+            name: "{{ old_docker_packages }}"
+            state: absent
+          ignore_errors: true
 
-    # Create keyrings directory and download GPG key
-    - name: Setup Docker repository
-      shell: |
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-        chmod a+r /etc/apt/keyrings/docker.asc
-      args:
-        creates: /etc/apt/keyrings/docker.asc
+        - name: Install prerequisites
+          package:
+            name:
+              - ca-certificates
+              - curl
+              - gnupg
+              - lsb-release
+            state: present
+            update_cache: yes
 
-    # Add Docker repository
-    - name: Add Docker repository to Apt sources
-      shell: |
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-      args:
-        creates: /etc/apt/sources.list.d/docker.list
+        - name: Create keyrings directory
+          file:
+            path: /etc/apt/keyrings
+            state: directory
+            mode: '0755'
 
-    # Update apt and install Docker
-    - name: Install Docker
-      shell: |
-        apt-get update
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        - name: Download Docker GPG key
+          get_url:
+            url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
+            dest: /etc/apt/keyrings/docker.asc
+            mode: '0644'
 
-    # Start and enable Docker service
+        - name: Add Docker repository
+          apt_repository:
+            repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
+            state: present
+            filename: docker
+            update_cache: yes
+
+        - name: Install Docker packages
+          package:
+            name: "{{ docker_packages }}"
+            state: present
+
+      when: docker_installed.rc != 0
+
     - name: Start and enable Docker service
       systemd:
         name: docker
         state: started
         enabled: yes
 
-    # Add ubuntu user to docker group
     - name: Add ubuntu user to docker group
       user:
         name: ubuntu
         groups: docker
         append: yes
+      notify: reset_connection
 
-    # Reset SSH connection to pick up new group membership
-    - name: Reset connection
-      meta: reset_connection
+    - name: Force all notified handlers to run
+      meta: flush_handlers
 
-    # Verify Docker installation
-    - name: Verify Docker is working
-      command: docker --version
-      register: docker_version
-      become_user: ubuntu
-
-    - name: Display Docker version
-      debug:
-        msg: "Docker version: {{ docker_version.stdout }}"
-
-    # Application deployment tasks
     - name: Stop existing container (if running)
       docker_container:
         name: "{{ container_name }}"
         state: stopped
       ignore_errors: true
-      register: stop_result
       become_user: ubuntu
 
     - name: Remove existing container (if exists)
@@ -88,7 +108,6 @@
         name: "{{ container_name }}"
         state: absent
       ignore_errors: true
-      register: remove_result
       become_user: ubuntu
 
     - name: Pull Docker image
@@ -96,7 +115,6 @@
         name: "{{ docker_image }}"
         source: pull
         force_source: true
-      register: pull_result
       become_user: ubuntu
 
     - name: Start new container
@@ -113,9 +131,16 @@
           timeout: 10s
           retries: 3
           start_period: 40s
-      register: container_result
+        env:
+          ENVIRONMENT: "{{ deployment_environment | default('production') }}"
       become_user: ubuntu
 
-    - name: Display container status
-      debug:
-        msg: "Container {{ container_name }} is {{ container_result.container.State.Status }}"
+    - name: Wait for application to be healthy
+      uri:
+        url: "http://{{ ansible_host }}:{{ host_port }}/healthz"
+        method: GET
+        status_code: 200
+      retries: 10
+      delay: 5
+      until: result.status == 200
+      register: result

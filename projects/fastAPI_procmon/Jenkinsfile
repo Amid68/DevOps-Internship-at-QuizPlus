@@ -50,10 +50,7 @@ node {
 		                docker buildx create --name multiarch --driver docker-container --platform linux/amd64,linux/arm64 --use || true
 		                docker buildx inspect --bootstrap
 		                
-		                # Login to Docker Hub first
 		                echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
-		                
-		                # Build and push multi-architecture image directly
 		                docker buildx build \\
 		                    --platform linux/amd64,linux/arm64 \\
 		                    -t ${fullImageName} \\
@@ -61,26 +58,18 @@ node {
 		                    .
 		            """
 		        }
-		}
+		    }
 	        
 	        stage('Test /healthz Endpoint') {
 		        sh """
-		            # Pull and run the ARM64 version for testing
 		            docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} --platform linux/arm64 ${fullImageName}
 		            
-		            # Wait for container to start
-		            sleep 5
-		            
-		            # Verify container is running
 		            docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
 		            
-		            # Install curl in container
 		            docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
 		         
-		            # Test /healthz endpoint with HTTP status check
 		            HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
 		
-		            # Check if we got a successful response (200)
 		            if [ "\$HTTP_STATUS" = "200" ]; then
 		                echo "✅ Health check endpoint responding successfully"
 		            else
@@ -88,51 +77,48 @@ node {
 		                exit 1
 		            fi                
 		        """
-		}
+		    }
 	        
 	        stage('Cleanup Local Images') {
 		        sh """
-		            # Clean up buildx cache periodically (optional)
 		            docker buildx prune -f --filter until=24h || true
 		            
-		            # Clean up any pulled test images
 		            docker images ${dockerHubRepo} --format "table {{.Repository}}:{{.Tag}}" | grep -v REPOSITORY | head -n -3 | xargs -r docker rmi || true
 		        """
-		}
+		    }
 
             stage('Deploy to EC2 Server with Ansible') {
-		    echo "🚀 Deploying ${fullImageName} to EC2 server using Ansible..."
+		        echo "🚀 Deploying ${fullImageName} to EC2 server using Ansible..."
 		    
-		    withCredentials([sshUserPrivateKey(
-		        credentialsId: 'ec2-server-ssh-key',
-		        keyFileVariable: 'SSH_KEY',
-		        usernameVariable: 'SSH_USER'
-		    )]) {
-		        sh '''
-		            cd projects/fastAPI_procmon/ansible
+		        withCredentials([sshUserPrivateKey(
+		            credentialsId: 'ec2-server-ssh-key',
+		            keyFileVariable: 'SSH_KEY',
+		            usernameVariable: 'SSH_USER'
+		        )]) {
+		            sh '''
+		                cd projects/fastAPI_procmon/ansible
 		            
-		            # Copy SSH key to temporary location for Ansible
-		            cp ${SSH_KEY} /tmp/ssh_key
-		            chmod 600 /tmp/ssh_key
+		                # Copy SSH key to temporary location for Ansible
+		                cp ${SSH_KEY} /tmp/ssh_key
+		                chmod 600 /tmp/ssh_key
 		            
-		            # Only proceed with deployment if ping succeeds
-		            if ansible ec2_servers -m ping; then
-		                ansible-playbook deploy.yml \
-		                    -e "image_name=''' + fullImageName + '''" \
-		                    -e "deployment_environment=''' + environment + '''" \
-		                    -v
+		                if ansible ec2_servers -m ping; then
+		                    ansible-playbook deploy.yml \
+		                        -e "image_name=''' + fullImageName + '''" \
+		                        -e "deployment_environment=''' + environment + '''" \
+		                        -v
 		                
-		                echo "🌐 Application should be available at: http://13.53.43.243:8000"
-		            else
-		                echo "❌ Ansible connectivity failed, skipping deployment"
-		                exit 1
-		            fi
+		                    echo "🌐 Application should be available at: http://13.53.43.243:8000"
+		                else
+		                    echo "❌ Ansible connectivity failed, skipping deployment"
+		                    exit 1
+		                fi
 		            
-		            # Cleanup temporary SSH key
-		            rm -f /tmp/ssh_key
-		        '''
+		                # Cleanup temporary SSH key
+		                rm -f /tmp/ssh_key
+		            '''
+		        }
 		    }
-		}
 	        
 	        stage('Cleanup Local Images') {
 	            sh """
