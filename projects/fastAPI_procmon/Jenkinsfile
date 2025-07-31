@@ -88,7 +88,7 @@ node {
 		    echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
 		    
 		    withCredentials([sshUserPrivateKey(
-		        credentialsId: 'ubuntu-server-ssh-key',
+		        credentialsId: 'ec2-server-ssh-key',
 		        keyFileVariable: 'SSH_KEY',
 		        usernameVariable: 'SSH_USER'
 		    )]) {

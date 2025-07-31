@@ -1,6 +1,6 @@
 ---
 - name: Deploy FastAPI Application with Docker
-  hosts: ubuntu_servers
+  hosts: ec2_servers
   become: false
   gather_facts: false
   vars:
