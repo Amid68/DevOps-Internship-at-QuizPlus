@@ -1,14 +1,28 @@
 FROM jenkins/inbound-agent:latest
 
-# Minimal version - just install Docker CLI
 USER root
 
-# Install only Docker CLI (smaller and faster)
+# Install Docker with buildx and Ansible
 RUN apt-get update && \
-    apt-get install -y docker.io && \
-    apt-get install -y ansible && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gnupg && \
+    # Add Docker's official GPG key and repository
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    # Install Docker CE CLI with buildx and Ansible
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        docker-ce-cli \
+        docker-buildx-plugin \
+        ansible && \
+    # Cleanup, create docker group, and add jenkins to it
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
+    groupadd docker && \
     usermod -aG docker jenkins
 
 USER jenkins

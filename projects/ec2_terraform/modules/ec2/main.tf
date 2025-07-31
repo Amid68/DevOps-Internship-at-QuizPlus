@@ -1,5 +1,5 @@
 locals {
-  redhat_ami_id = "ami-034292739b6480a6b"
+  ubuntu_ami_id = "ami-042b4708b1d05f512"
   
   common_tags = {
     Environment = var.environment
@@ -9,7 +9,7 @@ locals {
 }
 
 resource "aws_instance" "this" {
-  ami                    = local.redhat_ami_id
+  ami                    = local.ubuntu_ami_id
   instance_type          = var.instance_type
   subnet_id              = var.subnet_id
   vpc_security_group_ids = var.security_group_ids
