@@ -2,69 +2,113 @@
 - name: Deploy FastAPI Application with Docker
   hosts: ec2_servers
   become: true
-  gather_facts: false
+  gather_facts: true  # Changed to true since we need distribution info
   vars:
     app_name: "fastapi-procmon"
     container_name: "{{ app_name }}-{{ deployment_environment }}"
     docker_image: "{{ image_name }}"
     app_port: 8000
     host_port: 8000
-
   tasks:
+    # Remove old Docker packages
+    - name: Remove old Docker packages
+      apt:
+        name:
+          - docker.io
+          - docker-doc
+          - docker-compose
+          - docker-compose-v2
+          - podman-docker
+          - containerd
+          - runc
+        state: absent
+      ignore_errors: true
+
+    # Update apt and install prerequisites
     - name: Update apt package index
       apt:
         update_cache: yes
-      
-    - name: Install required packages
+
+    - name: Install ca-certificates and curl
       apt:
         name:
-          - apt-transport-https
           - ca-certificates
           - curl
-          - gnupg
-          - lsb-release
         state: present
-        
-    - name: Add Docker's official GPG key
-      apt_key:
+
+    # Create keyrings directory
+    - name: Create /etc/apt/keyrings directory
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    # Download Docker's GPG key
+    - name: Download Docker's official GPG key
+      get_url:
         url: https://download.docker.com/linux/ubuntu/gpg
-        state: present
-        
-    - name: Add Docker repository
-      apt_repository:
-        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
-        state: present
-        
-    - name: Install Docker CE
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    # Add Docker repository
+    - name: Add Docker repository to Apt sources
+      shell: |
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+      args:
+        creates: /etc/apt/sources.list.d/docker.list
+
+    # Update apt after adding repository
+    - name: Update apt package index after adding Docker repository
+      apt:
+        update_cache: yes
+
+    # Install Docker packages
+    - name: Install Docker CE and related packages
       apt:
         name:
           - docker-ce
           - docker-ce-cli
           - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
         state: present
-        
+
+    # Start and enable Docker service
     - name: Start and enable Docker service
       systemd:
         name: docker
         state: started
         enabled: yes
-        
+
+    # Add ubuntu user to docker group
     - name: Add ubuntu user to docker group
       user:
         name: ubuntu
         groups: docker
         append: yes
-        
+
     # Reset SSH connection to pick up new group membership
     - name: Reset connection
       meta: reset_connection
-      
+
+    # Verify Docker installation
+    - name: Verify Docker is working
+      command: docker --version
+      register: docker_version
+      become_user: ubuntu
+
+    - name: Display Docker version
+      debug:
+        msg: "Docker version: {{ docker_version.stdout }}"
+
+    # Application deployment tasks
     - name: Stop existing container (if running)
       docker_container:
         name: "{{ container_name }}"
         state: stopped
       ignore_errors: true
       register: stop_result
+      become_user: ubuntu
 
     - name: Remove existing container (if exists)
       docker_container:
@@ -72,6 +116,7 @@
         state: absent
       ignore_errors: true
       register: remove_result
+      become_user: ubuntu
 
     - name: Pull Docker image
       docker_image:
@@ -79,6 +124,7 @@
         source: pull
         force_source: true
       register: pull_result
+      become_user: ubuntu
 
     - name: Start new container
       docker_container:
@@ -95,4 +141,8 @@
           retries: 3
           start_period: 40s
       register: container_result
+      become_user: ubuntu
 
+    - name: Display container status
+      debug:
+        msg: "Container {{ container_name }} is {{ container_result.container.State.Status }}"
