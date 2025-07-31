@@ -39,50 +39,64 @@ node {
 	        }
 	 
 	        stage('Build Docker Image') {
-	            sh """
-	                cd projects/fastAPI_procmon/
-	                docker build -t ${fullImageName} .
-	            """
-	        }
+		        sh """
+		            cd projects/fastAPI_procmon/
+		            
+		            # Setup QEMU emulation for cross-platform builds
+		            docker run --rm --privileged tonistiigi/binfmt --install all
+		            
+		            # Create buildx builder with multi-platform support  
+		            docker buildx create --name multiarch --driver docker-container --platform linux/amd64,linux/arm64 --use || true
+		            docker buildx inspect --bootstrap
+		            
+		            # Login to Docker Hub
+		            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+		            
+		            # Build and push multi-architecture image directly
+		            docker buildx build \\
+		                --platform linux/amd64,linux/arm64 \\
+		                -t ${fullImageName} \\
+		                --push \\
+		                .
+		        """
+		}
 	        
 	        stage('Test /healthz Endpoint') {
-	            sh """
-	                # Start test container
-	                docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} ${fullImageName}
-	                
-	                # Verify container is running
-	                docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
-	                
-	                # Install curl in container
-	                docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
-	             
-	                # Test /healthz endpoint with HTTP status check
-			        HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-	
-			        # Check if we got a successful response (200)
-			        if [ "\$HTTP_STATUS" = "200" ]; then
-				        echo "✅ Health check endpoint responding successfully"
-			        else
-				        echo "❌ Health check failed with status code: \$HTTP_STATUS"
-				        exit 1
-			        fi                
-	            """
-	        }
+		        sh """
+		            # Pull and run the ARM64 version for testing
+		            docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} --platform linux/arm64 ${fullImageName}
+		            
+		            # Wait for container to start
+		            sleep 5
+		            
+		            # Verify container is running
+		            docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
+		            
+		            # Install curl in container
+		            docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
+		         
+		            # Test /healthz endpoint with HTTP status check
+		            HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
+		
+		            # Check if we got a successful response (200)
+		            if [ "\$HTTP_STATUS" = "200" ]; then
+		                echo "✅ Health check endpoint responding successfully"
+		            else
+		                echo "❌ Health check failed with status code: \$HTTP_STATUS"
+		                exit 1
+		            fi                
+		        """
+		}
 	        
-	        stage('Cleanup Test Container') {
-	            sh "docker stop fastapi-test-${environment}-${BUILD_NUMBER} && docker rm fastapi-test-${environment}-${BUILD_NUMBER}"
-	        }
-	        
-	        stage('Push to Docker Hub') {
-	            withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-	                sh """
-	                    # Login to Docker Hub
-	                    echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
-	                    
-	                    docker push ${fullImageName}
-	                """
-	            }
-	        }
+	        stage('Cleanup Local Images') {
+		        sh """
+		            # Clean up buildx cache periodically (optional)
+		            docker buildx prune -f --filter until=24h || true
+		            
+		            # Clean up any pulled test images
+		            docker images ${dockerHubRepo} --format "table {{.Repository}}:{{.Tag}}" | grep -v REPOSITORY | head -n -3 | xargs -r docker rmi || true
+		        """
+		}
 
             stage('Deploy to EC2 Server with Ansible') {
 		    echo "🚀 Deploying ${fullImageName} to EC2 server using Ansible..."
