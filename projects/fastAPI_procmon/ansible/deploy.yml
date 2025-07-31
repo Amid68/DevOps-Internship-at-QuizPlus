@@ -12,43 +12,26 @@
   tasks:
     # Remove old Docker packages
     - name: Remove old Docker packages
-      apt:
-        name:
-          - docker.io
-          - docker-doc
-          - docker-compose
-          - docker-compose-v2
-          - podman-docker
-          - containerd
-          - runc
-        state: absent
+      shell: |
+        for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do
+          apt-get remove -y $pkg 2>/dev/null || true
+        done
       ignore_errors: true
 
     # Update apt and install prerequisites
-    - name: Update apt package index
-      apt:
-        update_cache: yes
+    - name: Update apt and install prerequisites
+      shell: |
+        apt-get update
+        apt-get install -y ca-certificates curl
 
-    - name: Install ca-certificates and curl
-      apt:
-        name:
-          - ca-certificates
-          - curl
-        state: present
-
-    # Create keyrings directory
-    - name: Create /etc/apt/keyrings directory
-      file:
-        path: /etc/apt/keyrings
-        state: directory
-        mode: '0755'
-
-    # Download Docker's GPG key
-    - name: Download Docker's official GPG key
-      get_url:
-        url: https://download.docker.com/linux/ubuntu/gpg
-        dest: /etc/apt/keyrings/docker.asc
-        mode: '0644'
+    # Create keyrings directory and download GPG key
+    - name: Setup Docker repository
+      shell: |
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+      args:
+        creates: /etc/apt/keyrings/docker.asc
 
     # Add Docker repository
     - name: Add Docker repository to Apt sources
@@ -57,21 +40,11 @@
       args:
         creates: /etc/apt/sources.list.d/docker.list
 
-    # Update apt after adding repository
-    - name: Update apt package index after adding Docker repository
-      apt:
-        update_cache: yes
-
-    # Install Docker packages
-    - name: Install Docker CE and related packages
-      apt:
-        name:
-          - docker-ce
-          - docker-ce-cli
-          - containerd.io
-          - docker-buildx-plugin
-          - docker-compose-plugin
-        state: present
+    # Update apt and install Docker
+    - name: Install Docker
+      shell: |
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
     # Start and enable Docker service
     - name: Start and enable Docker service
