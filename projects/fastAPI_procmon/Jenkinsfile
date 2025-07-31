@@ -84,8 +84,8 @@ node {
 	            }
 	        }
 
-            stage('Deploy to Ubuntu Server with Ansible') {
-		    echo "🚀 Deploying ${fullImageName} to Ubuntu server using Ansible..."
+            stage('Deploy to EC2 Server with Ansible') {
+		    echo "🚀 Deploying ${fullImageName} to EC2 server using Ansible..."
 		    
 		    withCredentials([sshUserPrivateKey(
 		        credentialsId: 'ec2-server-ssh-key',
@@ -100,13 +100,13 @@ node {
 		            chmod 600 /tmp/ssh_key
 		            
 		            # Only proceed with deployment if ping succeeds
-		            if ansible ubuntu_servers -m ping; then
+		            if ansible ec2_servers -m ping; then
 		                ansible-playbook deploy.yml \
 		                    -e "image_name=''' + fullImageName + '''" \
 		                    -e "deployment_environment=''' + environment + '''" \
 		                    -v
 		                
-		                echo "🌐 Application should be available at: http://192.168.64.20:8000"
+		                echo "🌐 Application should be available at: http://13.53.43.243:8000"
 		            else
 		                echo "❌ Ansible connectivity failed, skipping deployment"
 		                exit 1
