@@ -11,13 +11,6 @@
     host_port: 8000
 
   tasks:
-    - name: Print deployment information
-      debug:
-        msg: 
-          - "Deploying {{ docker_image }}"
-          - "Container name: {{ container_name }}"
-          - "Environment: {{ deployment_environment }}"
-
     - name: Stop existing container (if running)
       docker_container:
         name: "{{ container_name }}"
@@ -55,19 +48,3 @@
           start_period: 40s
       register: container_result
 
-    - name: Wait for application to be ready
-      uri:
-        url: "http://{{ ansible_host }}:{{ host_port }}/healthz"
-        method: GET
-        status_code: 200
-      retries: 10
-      delay: 5
-      register: health_check
-
-    - name: Display deployment results
-      debug:
-        msg:
-          - "✅ Deployment completed successfully!"
-          - "🌐 Application is available at: http://{{ ansible_host }}:{{ host_port }}"
-          - "🔍 Health check: http://{{ ansible_host }}:{{ host_port }}/healthz"
-          - "📊 Process monitor: http://{{ ansible_host }}:{{ host_port }}/processes"
