@@ -1,5 +1,6 @@
 resource "aws_security_group" "ssh" {
   description   = "Security group for SSH into EC2 instance"
+  vpc_id        = data.aws_vpc.default.id
 
   ingress {
     description = "SSH"
@@ -12,6 +13,7 @@ resource "aws_security_group" "ssh" {
 
 resource "aws_security_group" "http" {
   description   = "Security group for inbound HTTP"
+  vpc_id        = data.aws_vpc.default.id
 
   ingress {
     description = "HTTP"
@@ -24,6 +26,7 @@ resource "aws_security_group" "http" {
 
 resource "aws_security_group" "egress" {
   description   = "Security group for all outbound traffic from EC2"
+  vpc_id        = data.aws_vpc.default.id
 
   egress {
     from_port   = 0

@@ -13,6 +13,14 @@ resource "aws_instance" "this" {
   instance_type           = var.instance_type
   key_name                = var.key_name
 
+  vpc_security_group_ids = [
+    aws_security_group.ssh.id,
+    aws_security_group.http.id,
+    aws_security_group.egress.id
+  ]
+
+  subnet_id               = data.aws_subnets.default.ids[0]
+
   root_block_device {
     volume_type           = "gp3"
     volume_size           = var.root_volume_size
