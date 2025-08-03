@@ -1,25 +1,3 @@
-variable "sg_environment" {
-  description = "Environment for which the security group is created (dev, prod)"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID where security group will be created"
-  type        = string
-}
-
-variable "ssh_cidr_blocks" {
-  description = "CIDR blocks allowed for SSH access"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-
-variable "http_port" {
-  description = "HTTP port to allow"
-  type        = number
-  default     = 8000
-}
-
 resource "aws_security_group" "ec2" {
   name_prefix = "${var.sg_environment}-ec2-"
   vpc_id      = var.vpc_id
