@@ -1,10 +1,10 @@
 module "security_group" {
   source              = "../../modules"
 
-  environment         = "prod"
+  sg_environment      = "prod"
   vpc_id              = data.aws_vpc.default.id
   ssh_cidr_blocks     = ["158.140.75.65/32"]
-  http_port          = 8000
+  http_port           = 8000
 }
 
 module "ec2" {

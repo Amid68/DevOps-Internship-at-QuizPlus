@@ -6,7 +6,6 @@ variable "sg_environment" {
 variable "vpc_id" {
   description = "VPC ID where security group will be created"
   type        = string
-  default     = data.aws_vpc.default.id
 }
 
 variable "ssh_cidr_blocks" {

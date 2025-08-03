@@ -25,6 +25,11 @@ variable "security_group_ids" {
   type        = list(string)
 }
 
+variable "subnet_id" {
+  description = "Subnet ID where the instance will be launched"
+  type        = string
+}
+
 variable "key_name" {
   description = "Name of the AWS key pair for SSH access"
   type        = string
