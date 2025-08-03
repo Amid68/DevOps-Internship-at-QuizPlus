@@ -11,8 +11,6 @@ locals {
 resource "aws_instance" "this" {
   ami                     = local.ubuntu_ami_id
   instance_type           = var.instance_type
-  vpc_security_group_ids  = var.security_group_ids
-  subnet_id               = var.subnet_id
   key_name                = var.key_name
 
   root_block_device {
@@ -23,7 +21,7 @@ resource "aws_instance" "this" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.environment}-${var.project_name}-ec2"
+    Name = "${var.environment}-fastAPI-ec2"
   })
 
   lifecycle {

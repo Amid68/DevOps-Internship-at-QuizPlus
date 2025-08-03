@@ -20,31 +20,10 @@ variable "root_volume_size" {
   default     = 30
 }
 
-variable "subnet_id" {
-  description = "Subnet ID where the instance will be launched"
-  type        = string
-}
-
-variable "security_group_ids" {
-  description = "List of security group IDs"
-  type        = list(string)
-}
-
 variable "key_name" {
   description = "Name of the AWS key pair for SSH access"
   type        = string
   default     = null
-}
-
-# Security group variables
-variable "sg_environment" {
-  description = "Environment for which the security group is created (dev, prod)"
-  type        = string
-}
-
-variable "vpc_id" {
-  description = "VPC ID where security group will be created"
-  type        = string
 }
 
 variable "ssh_cidr_blocks" {

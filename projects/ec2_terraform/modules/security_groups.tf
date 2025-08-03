@@ -1,7 +1,5 @@
-resource "aws_security_group" "ec2" {
-  name_prefix = "${var.sg_environment}-ec2-"
-  vpc_id      = var.vpc_id
-  description = "Security group for ${var.sg_environment} EC2 instance"
+resource "aws_security_group" "ssh" {
+  description   = "Security group for SSH into EC2 instance"
 
   ingress {
     description = "SSH"
@@ -10,6 +8,10 @@ resource "aws_security_group" "ec2" {
     protocol    = "tcp"
     cidr_blocks = var.ssh_cidr_blocks
   }
+}
+
+resource "aws_security_group" "http" {
+  description   = "Security group for inbound HTTP"
 
   ingress {
     description = "HTTP"
@@ -18,17 +20,15 @@ resource "aws_security_group" "ec2" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+}
+
+resource "aws_security_group" "egress" {
+  description   = "Security group for all outbound traffic from EC2"
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.sg_environment}-ec2-sg"
-    Environment = var.sg_environment
-    ManagedBy   = "terraform"
   }
 }
