@@ -1,4 +1,4 @@
-variable "environment" {
+variable "sg_environment" {
   description = "Environment for which the security group is created (dev, prod)"
   type        = string
 }
@@ -6,6 +6,7 @@ variable "environment" {
 variable "vpc_id" {
   description = "VPC ID where security group will be created"
   type        = string
+  default     = data.aws_vpc.default.id
 }
 
 variable "ssh_cidr_blocks" {
@@ -21,9 +22,9 @@ variable "http_port" {
 }
 
 resource "aws_security_group" "ec2" {
-  name_prefix = "${var.environment}-ec2-"
+  name_prefix = "${var.sg_environment}-ec2-"
   vpc_id      = var.vpc_id
-  description = "Security group for ${var.environment} EC2 instance"
+  description = "Security group for ${var.sg_environment} EC2 instance"
 
   ingress {
     description = "SSH"
@@ -49,8 +50,8 @@ resource "aws_security_group" "ec2" {
   }
 
   tags = {
-    Name        = "${var.environment}-ec2-sg"
-    Environment = var.environment
+    Name        = "${var.sg_environment}-ec2-sg"
+    Environment = var.sg_environment
     ManagedBy   = "terraform"
   }
 }

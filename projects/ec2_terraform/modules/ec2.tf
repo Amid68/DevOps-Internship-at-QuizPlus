@@ -20,11 +20,6 @@ variable "root_volume_size" {
   default     = 30
 }
 
-variable "subnet_id" {
-  description = "Subnet ID where the instance will be launched"
-  type        = string
-}
-
 variable "security_group_ids" {
   description = "List of security group IDs"
   type        = list(string)
@@ -49,7 +44,6 @@ locals {
 resource "aws_instance" "this" {
   ami                    = local.ubuntu_ami_id
   instance_type          = var.instance_type
-  subnet_id              = var.subnet_id
   vpc_security_group_ids = var.security_group_ids
   key_name               = var.key_name
 
