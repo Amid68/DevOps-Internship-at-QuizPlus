@@ -37,3 +37,45 @@ variable "http_port" {
   type        = number
   default     = 8000
 }
+
+variable "manage_dns" {
+  description = "Whether to manage DNS records"
+  type = bool
+  default = false
+}
+
+variable "domain_name" {
+  description = "Domain name for Route53"
+  type = string
+  default = ""
+}
+
+variable "subdomain" {
+  description = "Subdomain prefix"
+  type = string
+  default = ""
+}
+
+variable "create_hosted_zone" {
+  description = "Whether to create a new hosted zone"
+  type = bool
+  default = false
+}
+
+variable "existing_zone_id" {
+  description = "Existing Route53 hosted zone ID"
+  type = string
+  default = ""
+}
+
+variable "dns_ttl" {
+  description = "TTL for DNS records in seconds"
+  type = number
+  default = 300
+}
+
+variable "create_www_records" {
+  description = "Whether to create a www CNAME record"
+  type = bool
+  default = false
+}
