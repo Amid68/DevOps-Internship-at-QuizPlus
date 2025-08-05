@@ -1,5 +1,5 @@
 node {
-    docker.image('amid68/jenkins-agent-with-dockerio').inside('-v /var/run/docker.sock:/var/run/docker.sock --group-add 990') {
+    docker.image('amid68/jenkins-agent-with-dockerio').inside('-v /var/run/docker.sock:/var/run/docker.sock --group-add 988') {
 	    def config = [
 	        'prod': [
                 'branch': 'main',
