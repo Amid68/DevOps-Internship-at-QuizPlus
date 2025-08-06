@@ -11,14 +11,14 @@ resource "aws_security_group" "ssh" {
   }
 }
 
-resource "aws_security_group" "http" {
-  description   = "Security group for inbound HTTP"
+resource "aws_security_group" "https" {
+  description   = "Security group for inbound HTTPS"
   vpc_id        = data.aws_vpc.default.id
 
   ingress {
-    description = "HTTP"
-    from_port   = var.http_port
-    to_port     = var.http_port
+    description = "HTTPS"
+    from_port   = var.https_port
+    to_port     = var.https_port
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

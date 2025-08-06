@@ -32,7 +32,7 @@ variable "ssh_cidr_blocks" {
   default     = ["0.0.0.0/0"]
 }
 
-variable "http_port" {
+variable "https_port" {
   description = "HTTP port to allow"
   type        = number
   default     = 8000
