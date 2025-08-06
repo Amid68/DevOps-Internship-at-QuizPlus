@@ -1,0 +1,195 @@
+---
+# verify-deployment.yml
+- name: Verify Zero-Downtime Deployment
+  hosts: ec2_servers
+  become: true
+  gather_facts: false
+  vars:
+    public_port: 8000
+    verification_endpoints:
+      - path: "/healthz"
+        expected_status: 200
+      - path: "/processes"
+        expected_status: 200
+      - path: "/info"
+        expected_status: 200
+      - path: "/metrics"
+        expected_status: 200
+
+  tasks:
+    - name: Check which container is active
+      uri:
+        url: "http://{{ ansible_host }}:{{ public_port }}/info"
+        method: GET
+      register: app_info
+
+    - name: Display deployment information
+      debug:
+        msg:
+          - "Active Container: {{ app_info.json.application.container }}"
+          - "Environment: {{ app_info.json.application.environment }}"
+          - "Version: {{ app_info.json.application.version }}"
+          - "Uptime: {{ app_info.json.application.uptime_seconds }} seconds"
+
+    - name: Verify all endpoints
+      uri:
+        url: "http://{{ ansible_host }}:{{ public_port }}{{ item.path }}"
+        method: GET
+        status_code: "{{ item.expected_status }}"
+      loop: "{{ verification_endpoints }}"
+      loop_control:
+        label: "{{ item.path }}"
+
+    - name: Performance check - measure response time
+      shell: |
+        for i in {1..10}; do
+          curl -w "%{time_total}\n" -o /dev/null -s http://localhost:{{ public_port }}/processes
+        done | awk '{sum+=$1} END {print "Average response time: " sum/NR " seconds"}'
+      register: performance_result
+
+    - name: Display performance metrics
+      debug:
+        msg: "{{ performance_result.stdout }}"
+
+---
+# rollback-deployment.yml
+- name: Rollback to Previous Deployment
+  hosts: ec2_servers
+  become: true
+  gather_facts: false
+  vars:
+    app_name: "fastapi-procmon"
+    blue_container: "{{ app_name }}-blue"
+    green_container: "{{ app_name }}-green"
+    blue_port: 8001
+    green_port: 8002
+    public_port: 8000
+
+  tasks:
+    - name: Identify current active container
+      shell: |
+        if docker ps --format "table {{.Names}}" | grep -q "{{ blue_container }}"; then
+          echo "blue"
+        elif docker ps --format "table {{.Names}}" | grep -q "{{ green_container }}"; then
+          echo "green"
+        else
+          echo "none"
+        fi
+      register: current_container
+      become_user: ubuntu
+
+    - name: Check if inactive container exists
+      shell: |
+        if docker ps -a --format "table {{.Names}}" | grep -q "{{ green_container if current_container.stdout == 'blue' else blue_container }}"; then
+          echo "exists"
+        else
+          echo "not_found"
+        fi
+      register: inactive_exists
+      become_user: ubuntu
+
+    - name: Fail if no container to rollback to
+      fail:
+        msg: "No inactive container found for rollback"
+      when: inactive_exists.stdout == "not_found"
+
+    - name: Set rollback targets
+      set_fact:
+        rollback_to: "{{ 'green' if current_container.stdout == 'blue' else 'blue' }}"
+        rollback_container: "{{ green_container if current_container.stdout == 'blue' else blue_container }}"
+        rollback_port: "{{ green_port if current_container.stdout == 'blue' else blue_port }}"
+
+    - name: Start previous container
+      docker_container:
+        name: "{{ rollback_container }}"
+        state: started
+      become_user: ubuntu
+
+    - name: Wait for container to be healthy
+      uri:
+        url: "http://localhost:{{ rollback_port }}/healthz"
+        method: GET
+        status_code: 200
+      retries: 30
+      delay: 2
+
+    - name: Update nginx configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/fastapi
+      vars:
+        backend_port: "{{ rollback_port }}"
+
+    - name: Reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+
+    - name: Verify rollback
+      uri:
+        url: "http://localhost:{{ public_port }}/healthz"
+        method: GET
+        status_code: 200
+
+    - name: Stop failed container
+      docker_container:
+        name: "{{ blue_container if rollback_to == 'green' else green_container }}"
+        state: stopped
+      become_user: ubuntu
+
+    - name: Display rollback status
+      debug:
+        msg:
+          - "✅ Rollback completed successfully!"
+          - "🔄 Rolled back to: {{ rollback_container }}"
+          - "🌐 Application is available on port {{ public_port }}"
+
+---
+# monitoring.yml
+- name: Continuous Monitoring During Deployment
+  hosts: ec2_servers
+  become: false
+  gather_facts: false
+  vars:
+    monitoring_duration: 60  # seconds
+    check_interval: 5       # seconds
+
+  tasks:
+    - name: Monitor application availability
+      shell: |
+        echo "Starting monitoring for {{ monitoring_duration }} seconds..."
+        end_time=$(($(date +%s) + {{ monitoring_duration }}))
+        successful_checks=0
+        failed_checks=0
+        
+        while [ $(date +%s) -lt $end_time ]; do
+          if curl -f -s http://localhost:8000/healthz > /dev/null; then
+            successful_checks=$((successful_checks + 1))
+            echo "✅ $(date '+%Y-%m-%d %H:%M:%S') - Health check passed"
+          else
+            failed_checks=$((failed_checks + 1))
+            echo "❌ $(date '+%Y-%m-%d %H:%M:%S') - Health check failed"
+          fi
+          sleep {{ check_interval }}
+        done
+        
+        echo ""
+        echo "Monitoring Summary:"
+        echo "✅ Successful checks: $successful_checks"
+        echo "❌ Failed checks: $failed_checks"
+        
+        if [ $failed_checks -eq 0 ]; then
+          echo "🎉 Perfect availability during monitoring period!"
+          exit 0
+        else
+          availability=$((successful_checks * 100 / (successful_checks + failed_checks)))
+          echo "📊 Availability: ${availability}%"
+          if [ $availability -lt 99 ]; then
+            exit 1
+          fi
+        fi
+      register: monitoring_result
+
+    - name: Display monitoring results
+      debug:
+        msg: "{{ monitoring_result.stdout_lines }}"

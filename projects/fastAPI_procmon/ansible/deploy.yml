@@ -1,146 +1,169 @@
 ---
-- name: Deploy FastAPI Application with Docker
+# deploy-zero-downtime.yml
+- name: Deploy FastAPI Application with Zero Downtime
   hosts: ec2_servers
   become: true
   gather_facts: true
   vars:
     app_name: "fastapi-procmon"
-    container_name: "{{ app_name }}-{{ deployment_environment }}"
+    blue_container: "{{ app_name }}-blue"
+    green_container: "{{ app_name }}-green"
     docker_image: "{{ image_name }}"
     app_port: 8000
-    host_port: 8000
-    docker_packages:
-      - docker-ce
-      - docker-ce-cli
-      - containerd.io
-      - docker-buildx-plugin
-      - docker-compose-plugin
-    old_docker_packages:
-      - docker.io
-      - docker-doc
-      - docker-compose
-      - docker-compose-v2
-      - podman-docker
-      - containerd
-      - runc
-
-  handlers:
-    - name: reset_connection
-      meta: reset_connection
+    blue_port: 8001
+    green_port: 8002
+    public_port: 443
+    deployment_environment: "{{ deployment_environment }}"
+    health_check_retries: 30
+    health_check_delay: 2
 
   tasks:
-    - name: Check if Docker is installed
-      command: docker --version
-      register: docker_installed
-      failed_when: false
-      changed_when: false
+    - name: Identify currently active container
+      shell: |
+        if docker ps --format "table {{.Names}}" | grep -q "{{ blue_container }}"; then
+          echo "blue"
+        elif docker ps --format "table {{.Names}}" | grep -q "{{ green_container }}"; then
+          echo "green"
+        else
+          echo "none"
+        fi
+      register: active_container
       become_user: ubuntu
 
-    - name: Install Docker (if not present)
-      block:
-        - name: Remove old Docker packages
-          package:
-            name: "{{ old_docker_packages }}"
-            state: absent
-          ignore_errors: true
+    - name: Set deployment targets
+      set_fact:
+        new_container: "{{ 'green' if active_container.stdout == 'blue' else 'blue' }}"
+        old_container: "{{ active_container.stdout if active_container.stdout != 'none' else '' }}"
+        new_container_name: "{{ green_container if active_container.stdout == 'blue' else blue_container }}"
+        old_container_name: "{{ blue_container if active_container.stdout == 'blue' else green_container }}"
+        new_port: "{{ green_port if active_container.stdout == 'blue' else blue_port }}"
+        old_port: "{{ blue_port if active_container.stdout == 'blue' else green_port }}"
 
-        - name: Install prerequisites
-          package:
-            name:
-              - ca-certificates
-              - curl
-              - gnupg
-              - lsb-release
-            state: present
-            update_cache: yes
+    - name: Display deployment strategy
+      debug:
+        msg: 
+          - "Current active: {{ active_container.stdout }}"
+          - "Deploying to: {{ new_container }}"
+          - "New container: {{ new_container_name }} on port {{ new_port }}"
 
-        - name: Create keyrings directory
-          file:
-            path: /etc/apt/keyrings
-            state: directory
-            mode: '0755'
-
-        - name: Download Docker GPG key
-          get_url:
-            url: "https://download.docker.com/linux/{{ ansible_distribution | lower }}/gpg"
-            dest: /etc/apt/keyrings/docker.asc
-            mode: '0644'
-
-        - name: Add Docker repository
-          apt_repository:
-            repo: "deb [arch={{ ansible_architecture }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} stable"
-            state: present
-            filename: docker
-            update_cache: yes
-
-        - name: Install Docker packages
-          package:
-            name: "{{ docker_packages }}"
-            state: present
-
-      when: docker_installed.rc != 0
-
-    - name: Start and enable Docker service
-      systemd:
-        name: docker
-        state: started
-        enabled: yes
-
-    - name: Add ubuntu user to docker group
-      user:
-        name: ubuntu
-        groups: docker
-        append: yes
-      notify: reset_connection
-
-    - name: Force all notified handlers to run
-      meta: flush_handlers
-
-    - name: Stop existing container (if running)
-      docker_container:
-        name: "{{ container_name }}"
-        state: stopped
-      ignore_errors: true
-      become_user: ubuntu
-
-    - name: Remove existing container (if exists)
-      docker_container:
-        name: "{{ container_name }}"
-        state: absent
-      ignore_errors: true
-      become_user: ubuntu
-
-    - name: Pull Docker image
+    - name: Pull new Docker image
       docker_image:
         name: "{{ docker_image }}"
         source: pull
         force_source: true
       become_user: ubuntu
 
-    - name: Start new container
+    - name: Start new container on staging port
       docker_container:
-        name: "{{ container_name }}"
+        name: "{{ new_container_name }}"
         image: "{{ docker_image }}"
         state: started
         restart_policy: unless-stopped
         ports:
-          - "{{ host_port }}:{{ app_port }}"
+          - "{{ new_port }}:{{ app_port }}"
         healthcheck:
           test: ["CMD", "curl", "-f", "http://localhost:{{ app_port }}/healthz"]
-          interval: 30s
-          timeout: 10s
+          interval: 10s
+          timeout: 5s
           retries: 3
-          start_period: 40s
+          start_period: 30s
         env:
-          ENVIRONMENT: "{{ deployment_environment | default('production') }}"
+          ENVIRONMENT: "{{ deployment_environment }}"
+          CONTAINER_COLOR: "{{ new_container }}"
       become_user: ubuntu
 
-    - name: Wait for application to be healthy
+    - name: Wait for new container to be healthy
       uri:
-        url: "http://{{ ansible_host }}:{{ host_port }}/healthz"
+        url: "http://localhost:{{ new_port }}/healthz"
         method: GET
         status_code: 200
-      retries: 10
-      delay: 5
+      retries: "{{ health_check_retries }}"
+      delay: "{{ health_check_delay }}"
       until: result.status == 200
       register: result
+
+    - name: Run smoke tests on new container
+      uri:
+        url: "http://localhost:{{ new_port }}/processes"
+        method: GET
+        status_code: 200
+      register: smoke_test
+
+    - name: Verify smoke test response
+      assert:
+        that:
+          - smoke_test.status == 200
+          - smoke_test.json is defined
+        fail_msg: "Smoke tests failed on new container"
+
+    - name: Install nginx if not present
+      package:
+        name: nginx
+        state: present
+
+    - name: Configure nginx for blue-green deployment
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/sites-available/fastapi
+        mode: '0644'
+      vars:
+        backend_port: "{{ new_port }}"
+
+    - name: Enable nginx site
+      file:
+        src: /etc/nginx/sites-available/fastapi
+        dest: /etc/nginx/sites-enabled/fastapi
+        state: link
+
+    - name: Test nginx configuration
+      command: nginx -t
+      register: nginx_test
+
+    - name: Reload nginx to switch traffic
+      systemd:
+        name: nginx
+        state: reloaded
+      when: nginx_test.rc == 0
+
+    - name: Verify application is accessible through nginx
+      uri:
+        url: "http://localhost:{{ public_port }}/healthz"
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 1
+
+    - name: Wait for connections to drain from old container
+      pause:
+        seconds: 10
+      when: old_container != ''
+
+    - name: Stop old container
+      docker_container:
+        name: "{{ old_container_name }}"
+        state: stopped
+      when: old_container != ''
+      become_user: ubuntu
+
+    - name: Remove old container
+      docker_container:
+        name: "{{ old_container_name }}"
+        state: absent
+      when: old_container != ''
+      become_user: ubuntu
+
+    - name: Clean up old Docker images
+      shell: |
+        docker image prune -f
+        docker images | grep "{{ app_name }}" | tail -n +4 | awk '{print $3}' | xargs -r docker rmi -f
+      become_user: ubuntu
+      ignore_errors: true
+
+    - name: Display deployment summary
+      debug:
+        msg:
+          - "✅ Deployment completed successfully!"
+          - "🟢 Active container: {{ new_container_name }}"
+          - "🌐 Application URL: http://{{ ansible_host }}:{{ public_port }}"
+          - "📊 Health endpoint: http://{{ ansible_host }}:{{ public_port }}/healthz"
+          - "🚀 Zero downtime achieved!"
