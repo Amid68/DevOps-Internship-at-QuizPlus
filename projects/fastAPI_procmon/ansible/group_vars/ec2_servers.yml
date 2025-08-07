@@ -18,8 +18,8 @@ green_port: 8002
 public_port: 443
 
 # SSL certificate paths (Let's Encrypt paths)
-ssl_server_cert_path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
-ssl_server_key_path: "/etc/letsencrypt/live/{{ domain_name }}/privkey.pem"
+ssl_cert_path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+ssl_key_path: "/etc/letsencrypt/live/{{ domain_name }}/privkey.pem"
 
 # Fallback to self-signed if Let's Encrypt fails
 ssl_cert_path_fallback: "/etc/ssl/certs/{{ domain_name }}.pem"
