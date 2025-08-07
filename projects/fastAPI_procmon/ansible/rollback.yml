@@ -19,9 +19,9 @@
     - name: Check current container state
       # Reusing the same logic from deployment for consistency
       shell: |
-        if docker ps --format "table {{ '{{.Names}} }}" | grep -q "{{ app_name }}-blue"; then
+        if docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-blue"; then
           echo "blue"
-        elif docker ps --format "table {{ '{{.Names}} }}" | grep -q "{{ app_name }}-green"; then
+        elif docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-green"; then
           echo "green"
         else
           echo "none"

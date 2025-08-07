@@ -49,8 +49,8 @@ node {
             stage('Build Docker Image') {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
                     sh """
-                        cd projects/fastAPI_procmon/
-                        
+                        cd projects/fastAPI_procmon/backend
+
                         # Setup QEMU emulation for cross-platform builds
                         docker run --rm --privileged tonistiigi/binfmt --install all
                         

@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Process Monitor Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0f0f23;
+            --bg-secondary: #1a1b3a;
+            --bg-card: #1e1f3d;
+            --text-primary: #e1e1e6;
+            --text-secondary: #a8a8b3;
+            --accent-blue: #4a9eff;
+            --accent-green: #00d68f;
+            --accent-red: #ff3b30;
+            --accent-yellow: #ffcc00;
+            --border-color: #2a2b4a;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            color: var(--text-primary);
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        /* Animated background particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 0;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            opacity: 0.3;
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            from {
+                transform: translateY(100vh) translateX(0);
+            }
+            to {
+                transform: translateY(-10vh) translateX(100px);
+            }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Header */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: rgba(30, 31, 61, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-green));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: rgba(0, 214, 143, 0.1);
+            border: 1px solid rgba(0, 214, 143, 0.3);
+            border-radius: 20px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: rgba(30, 31, 61, 0.6);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem;
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+            animation: slide 3s infinite;
+        }
+
+        @keyframes slide {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(74, 158, 255, 0.2);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .stat-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2rem;
+            opacity: 0.2;
+        }
+
+        /* Controls */
+        .controls {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, var(--accent-blue), #3a7ecc);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(74, 158, 255, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn.secondary {
+            background: rgba(168, 168, 179, 0.1);
+            border: 1px solid var(--border-color);
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 0.75rem 1rem 0.75rem 2.5rem;
+            background: rgba(30, 31, 61, 0.6);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(74, 158, 255, 0.1);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 0.75rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-secondary);
+        }
+
+        /* Process Table */
+        .table-container {
+            background: rgba(30, 31, 61, 0.6);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .table-header {
+            padding: 1rem 1.5rem;
+            background: rgba(26, 27, 58, 0.6);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .table-count {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background: rgba(26, 27, 58, 0.4);
+        }
+
+        th {
+            text-align: left;
+            padding: 1rem 1.5rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tbody tr {
+            transition: all 0.3s ease;
+            border-bottom: 1px solid rgba(42, 43, 74, 0.5);
+        }
+
+        tbody tr:hover {
+            background: rgba(74, 158, 255, 0.05);
+        }
+
+        td {
+            padding: 1rem 1.5rem;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .process-name {
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .pid {
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+            color: var(--text-secondary);
+        }
+
+        /* Progress Bars */
+        .progress-bar {
+            width: 100px;
+            height: 6px;
+            background: rgba(168, 168, 179, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+        }
+
+        .progress-fill.low {
+            background: linear-gradient(90deg, var(--accent-green), #00b074);
+        }
+
+        .progress-fill.medium {
+            background: linear-gradient(90deg, var(--accent-yellow), #e6b800);
+        }
+
+        .progress-fill.high {
+            background: linear-gradient(90deg, var(--accent-red), #e62e25);
+        }
+
+        .percentage {
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        /* Loading Spinner */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 3rem;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid var(--border-color);
+            border-top: 3px solid var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Error Message */
+        .error-message {
+            display: none;
+            padding: 1rem;
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            border-radius: 8px;
+            color: var(--accent-red);
+            margin: 1rem 0;
+        }
+
+        /* Footer */
+        .footer {
+            margin-top: 3rem;
+            padding: 1.5rem;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .table-wrapper {
+                overflow-x: scroll;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Animated Background -->
+    <div class="particles" id="particles"></div>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <div class="logo-icon">📊</div>
+                <div>
+                    <h1>Process Monitor</h1>
+                    <div id="deployment-info" style="color: var(--text-secondary); font-size: 0.875rem;"></div>
+                </div>
+            </div>
+            <div class="status-indicator">
+                <div class="status-dot"></div>
+                <span id="status-text">Connected</span>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">Total Processes</div>
+                <div class="stat-value" id="total-processes">0</div>
+                <span class="stat-icon">🔄</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">CPU Usage</div>
+                <div class="stat-value" id="cpu-usage">0%</div>
+                <span class="stat-icon">⚡</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Memory Usage</div>
+                <div class="stat-value" id="memory-usage">0%</div>
+                <span class="stat-icon">💾</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Disk Usage</div>
+                <div class="stat-value" id="disk-usage">0%</div>
+                <span class="stat-icon">💿</span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <button class="btn" id="refresh-btn">
+                🔄 Refresh Now
+            </button>
+            <button class="btn secondary" id="auto-refresh-btn">
+                ⏸️ Pause Auto-Refresh
+            </button>
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="search-input" placeholder="Search processes...">
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div class="error-message" id="error-message"></div>
+
+        <!-- Process Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <div class="table-title">Running Processes</div>
+                <div class="table-count" id="process-count">Showing 0 processes</div>
+            </div>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p style="margin-top: 1rem; color: var(--text-secondary);">Loading processes...</p>
+            </div>
+            <div class="table-wrapper">
+                <table id="process-table">
+                    <thead>
+                        <tr>
+                            <th>PID</th>
+                            <th>Process Name</th>
+                            <th>CPU %</th>
+                            <th>Memory %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="process-tbody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Process Monitor Dashboard • Real-time System Monitoring</p>
+            <p style="margin-top: 0.5rem;">Last updated: <span id="last-updated">Never</span></p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const API_BASE_URL = window.location.protocol + '//' + window.location.hostname + ':8000';
+        let autoRefresh = true;
+        let refreshInterval;
+
+        // Create animated particles
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 20 + 's';
+                particle.style.animationDuration = (15 + Math.random() * 10) + 's';
+                particlesContainer.appendChild(particle);
+            }
+        }
+
+        // Format percentage with color
+        function getProgressBarClass(percentage) {
+            if (percentage < 30) return 'low';
+            if (percentage < 70) return 'medium';
+            return 'high';
+        }
+
+        // Fetch deployment info
+        async function fetchDeploymentInfo() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/info`);
+                const data = await response.json();
+                const infoEl = document.getElementById('deployment-info');
+                infoEl.textContent = `v${data.application.version} • ${data.application.environment} • ${data.application.container}`;
+            } catch (error) {
+                console.error('Failed to fetch deployment info:', error);
+            }
+        }
+
+        // Fetch health status
+        async function fetchHealth() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/healthz`);
+                const data = await response.json();
+                
+                document.getElementById('cpu-usage').textContent = data.metrics.cpu_percent.toFixed(1) + '%';
+                document.getElementById('memory-usage').textContent = data.metrics.memory_percent.toFixed(1) + '%';
+                document.getElementById('disk-usage').textContent = data.metrics.disk_percent.toFixed(1) + '%';
+                
+                const statusEl = document.getElementById('status-text');
+                const statusDot = document.querySelector('.status-dot');
+                
+                if (data.status === 'healthy') {
+                    statusEl.textContent = 'Healthy';
+                    statusDot.style.background = 'var(--accent-green)';
+                } else {
+                    statusEl.textContent = 'Degraded';
+                    statusDot.style.background = 'var(--accent-yellow)';
+                }
+            } catch (error) {
+                console.error('Failed to fetch health:', error);
+                document.getElementById('status-text').textContent = 'Disconnected';
+                document.querySelector('.status-dot').style.background = 'var(--accent-red)';
+            }
+        }
+
+        // Fetch and display processes
+        async function fetchProcesses() {
+            const loadingEl = document.getElementById('loading');
+            const errorEl = document.getElementById('error-message');
+            const tbody = document.getElementById('process-tbody');
+            
+            loadingEl.style.display = 'block';
+            errorEl.style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/processes?limit=50`);
+                if (!response.ok) throw new Error('Failed to fetch processes');
+                
+                const data = await response.json();
+                const processes = data.processes;
+                
+                // Update total count
+                document.getElementById('total-processes').textContent = processes.length;
+                document.getElementById('process-count').textContent = `Showing ${processes.length} processes`;
+                
+                // Clear and populate table
+                tbody.innerHTML = '';
+                
+                processes.forEach(process => {
+                    const row = document.createElement('tr');
+                    
+                    const cpuClass = getProgressBarClass(process.cpu_percent);
+                    const memClass = getProgressBarClass(process.memory_percent);
+                    
+                    row.innerHTML = `
+                        <td><span class="pid">${process.pid}</span></td>
+                        <td><span class="process-name">${process.name}</span></td>
+                        <td>
+                            <div style="display: flex; align-items: center;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill ${cpuClass}" style="width: ${Math.min(process.cpu_percent, 100)}%"></div>
+                                </div>
+                                <span class="percentage">${process.cpu_percent.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div style="display: flex; align-items: center;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill ${memClass}" style="width: ${Math.min(process.memory_percent, 100)}%"></div>
+                                </div>
+                                <span class="percentage">${process.memory_percent.toFixed(1)}%</span>
+                            </div>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(row);
+                });
+                
+                // Update last updated time
+                document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+                
+            } catch (error) {
+                console.error('Error fetching processes:', error);
+                errorEl.textContent = `Error: ${error.message}. Make sure the backend is running on port 8000.`;
+                errorEl.style.display = 'block';
+            } finally {
+                loadingEl.style.display = 'none';
+            }
+        }
+
+        // Search functionality
+        function setupSearch() {
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                const rows = document.querySelectorAll('#process-tbody tr');
+                
+                rows.forEach(row => {
+                    const processName = row.querySelector('.process-name').textContent.toLowerCase();
+                    const pid = row.querySelector('.pid').textContent;
+                    
+                    if (processName.includes(searchTerm) || pid.includes(searchTerm)) {
+                        row.style.display = '';
+                    } else {
+                        row.style.display = 'none';
+                    }
+                });
+                
+                // Update count
+                const visibleRows = document.querySelectorAll('#process-tbody tr:not([style*="display: none"])').length;
+                document.getElementById('process-count').textContent = `Showing ${visibleRows} processes`;
+            });
+        }
+
+        // Setup auto-refresh
+        function setupAutoRefresh() {
+            if (autoRefresh) {
+                refreshInterval = setInterval(() => {
+                    fetchProcesses();
+                    fetchHealth();
+                }, 5000); // Refresh every 5 seconds
+            }
+        }
+
+        // Setup controls
+        function setupControls() {
+            // Refresh button
+            document.getElementById('refresh-btn').addEventListener('click', () => {
+                fetchProcesses();
+                fetchHealth();
+            });
+            
+            // Auto-refresh toggle
+            const autoRefreshBtn = document.getElementById('auto-refresh-btn');
+            autoRefreshBtn.addEventListener('click', () => {
+                autoRefresh = !autoRefresh;
+                
+                if (autoRefresh) {
+                    autoRefreshBtn.innerHTML = '⏸️ Pause Auto-Refresh';
+                    setupAutoRefresh();
+                } else {
+                    autoRefreshBtn.innerHTML = '▶️ Start Auto-Refresh';
+                    clearInterval(refreshInterval);
+                }
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            fetchDeploymentInfo();
+            fetchHealth();
+            fetchProcesses();
+            setupSearch();
+            setupControls();
+            setupAutoRefresh();
+        });
+    </script>
+</body>
+</html>
