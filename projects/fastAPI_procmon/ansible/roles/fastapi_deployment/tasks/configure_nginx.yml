@@ -43,7 +43,7 @@
 
 - name: Verify application is accessible through nginx
   uri:
-    url: "https://localhost:{{ public_port | default(443) }}/healthz"
+    url: "https://{{ domain_name }}/healthz"
     method: GET
     status_code: 200
   retries: 5
