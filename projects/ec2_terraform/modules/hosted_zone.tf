@@ -1,5 +1,3 @@
-resource "aws_route53_zone" "this" {
-  count = var.manage_dns && var.create_hosted_zone ? 1 : 0
-
+resource "aws_route53_zone" "ameed_de" {
   name = var.domain_name
 }

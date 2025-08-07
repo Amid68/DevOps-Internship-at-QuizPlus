@@ -17,8 +17,8 @@ resource "aws_security_group" "https" {
 
   ingress {
     description = "HTTPS"
-    from_port   = var.https_port
-    to_port     = var.https_port
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }

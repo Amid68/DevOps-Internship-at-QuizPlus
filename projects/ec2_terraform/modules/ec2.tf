@@ -1,21 +1,15 @@
 locals {
   ubuntu_ami_id = "ami-042b4708b1d05f512"
-  
-  common_tags = {
-    Environment = var.environment
-    Project     = var.project_name
-    ManagedBy   = "terraform"
-  }
 }
 
-resource "aws_instance" "this" {
+resource "aws_instance" "proc_mon" {
   ami                     = local.ubuntu_ami_id
   instance_type           = var.instance_type
   key_name                = var.key_name
 
   vpc_security_group_ids = [
     aws_security_group.ssh.id,
-    aws_security_group.http.id,
+    aws_security_group.https.id,
     aws_security_group.egress.id
   ]
 
@@ -27,10 +21,6 @@ resource "aws_instance" "this" {
     delete_on_termination = true
     encrypted             = true
   }
-
-  tags = merge(local.common_tags, {
-    Name = "${var.environment}-fastAPI-ec2"
-  })
 
   lifecycle {
     create_before_destroy = true

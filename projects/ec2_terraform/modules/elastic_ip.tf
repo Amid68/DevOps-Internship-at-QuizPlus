@@ -1,6 +1,6 @@
-resource "aws_eip" "this" {
+resource "aws_eip" "proc_mon" {
   domain = "vpc"
-  instance = aws_instance.this.id
+  instance = aws_instance.proc_mon.id
 
-  depends_on = [aws_instance.this]
+  depends_on = [aws_instance.proc_mon]
 }

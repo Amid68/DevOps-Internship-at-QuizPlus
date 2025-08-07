@@ -1,142 +1,248 @@
+// Jenkinsfile-zero-downtime
 node {
     docker.image('amid68/jenkins-agent-with-dockerio').inside('-v /var/run/docker.sock:/var/run/docker.sock --group-add 988') {
-	    def config = [
-	        'prod': [
+        def config = [
+            'prod': [
                 'branch': 'main',
                 'environment': 'production',
+                'ec2_ip': '16.16.75.141'  // Update with Elastic IP after Terraform
             ],
-	        'dev': [
+            'dev': [
                 'branch': 'dev',
                 'environment': 'development',
+                'ec2_ip': 'YOUR_DEV_ELASTIC_IP'  // Update after Terraform
             ]
-	    ]
-	
-	    def currentBranch = env.BRANCH_NAME ?: 'unknown'
+        ]
+    
+        def currentBranch = env.BRANCH_NAME ?: 'unknown'
         def environmentConfig = config.find { key, value -> value.branch == currentBranch }?.value
-        def environment = environmentConfig?.environment  
-	
-	    if (!environmentConfig) {
-	        error("Unsupported branch: ${currentBranch}.")
-	    }
-	
-	    echo "Building branch '${currentBranch}' for '${environment}' environment"
-	
-	    def imageTag = "${BUILD_NUMBER}"
-	    def dockerHubRepo = 'amid68/fastapi-procmon'
-	    def dockerHubTag = "${environment}-${imageTag}"
-	    def fullImageName = "${dockerHubRepo}:${dockerHubTag}"
-	
-	    try {
-	        stage('Checkout') {
-	            checkout([
-	                $class: 'GitSCM',
-	                branches: [[name: "*/${currentBranch}"]],
-	                userRemoteConfigs: [[
-	                    url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git',
-	                    credentialsId: 'github-credentials'
-	                ]],
-	            ])
-	        }
-	 
-	        stage('Build Docker Image') {
-		        withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-		            sh """
-		                cd projects/fastAPI_procmon/
-		                
-		                # Setup QEMU emulation for cross-platform builds
-		                docker run --rm --privileged tonistiigi/binfmt --install all
-		                
-		                # Create buildx builder with multi-platform support  
-		                docker buildx create --name multiarch --driver docker-container --platform linux/amd64,linux/arm64 --use || true
-		                docker buildx inspect --bootstrap
-		                
-		                echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
-		                docker buildx build \\
-		                    --platform linux/amd64,linux/arm64 \\
-		                    -t ${fullImageName} \\
-		                    --push \\
-		                    .
-		            """
-		        }
-		    }
-	        
-	        stage('Test /healthz Endpoint') {
-		        sh """
-		            docker run -d --name fastapi-test-${environment}-${BUILD_NUMBER} --platform linux/arm64 ${fullImageName}
-		            
-		            docker ps | grep fastapi-test-${environment}-${BUILD_NUMBER} || exit 1
-		            
-		            docker exec fastapi-test-${environment}-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null
-		         
-		            HTTP_STATUS=\$(docker exec fastapi-test-${environment}-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/healthz)
-		
-		            if [ "\$HTTP_STATUS" = "200" ]; then
-		                echo "✅ Health check endpoint responding successfully"
-		            else
-		                echo "❌ Health check failed with status code: \$HTTP_STATUS"
-		                exit 1
-		            fi                
-		        """
-		    }
-	        
-	        stage('Cleanup Local Images') {
-		        sh """
-		            docker buildx prune -f --filter until=24h || true
-		            
-		            docker images ${dockerHubRepo} --format "table {{.Repository}}:{{.Tag}}" | grep -v REPOSITORY | head -n -3 | xargs -r docker rmi || true
-		        """
-		    }
+        def environment = environmentConfig?.environment
+        def ec2_ip = environmentConfig?.ec2_ip
+    
+        if (!environmentConfig) {
+            error("Unsupported branch: ${currentBranch}.")
+        }
+    
+        echo "Building branch '${currentBranch}' for '${environment}' environment"
+    
+        def imageTag = "${BUILD_NUMBER}"
+        def gitCommit = ''
+        def dockerHubRepo = 'amid68/fastapi-procmon'
+        def dockerHubTag = "${environment}-${imageTag}"
+        def fullImageName = "${dockerHubRepo}:${dockerHubTag}"
+    
+        try {
+            stage('Checkout') {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${currentBranch}"]],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/Amid68/DevOps-Internship-at-QuizPlus.git',
+                        credentialsId: 'github-credentials'
+                    ]],
+                ])
+                
+                gitCommit = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
+                fullImageName = "${dockerHubRepo}:${environment}-${imageTag}-${gitCommit}"
+            }
+     
+            stage('Build Docker Image') {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                    sh """
+                        cd projects/fastAPI_procmon/
+                        
+                        # Setup QEMU emulation for cross-platform builds
+                        docker run --rm --privileged tonistiigi/binfmt --install all
+                        
+                        # Create buildx builder with multi-platform support  
+                        docker buildx create --name multiarch --driver docker-container --platform linux/amd64,linux/arm64 --use || true
+                        docker buildx inspect --bootstrap
+                        
+                        echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                        
+                        # Build with build arguments for versioning
+                        docker buildx build \\
+                            --platform linux/amd64,linux/arm64 \\
+                            --build-arg APP_VERSION="${imageTag}-${gitCommit}" \\
+                            -t ${fullImageName} \\
+                            -t ${dockerHubRepo}:${environment}-latest \\
+                            --push \\
+                            .
+                    """
+                }
+            }
+            
+            stage('Test Container Locally') {
+                sh """
+                    echo "🧪 Testing container locally..."
+                    docker run -d --name test-${BUILD_NUMBER} --platform linux/arm64 -p 9999:8000 ${fullImageName}
+                    
+                    sleep 5
+                    
+                    # Test all endpoints
+                    for endpoint in healthz processes info metrics; do
+                        echo "Testing /\${endpoint}..."
+                        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/\${endpoint})
+                        if [ "\$HTTP_STATUS" = "200" ]; then
+                            echo "✅ /\${endpoint} endpoint passed"
+                        else
+                            echo "❌ /\${endpoint} endpoint failed with status: \$HTTP_STATUS"
+                            docker logs test-${BUILD_NUMBER}
+                            exit 1
+                        fi
+                    done
+                    
+                    docker stop test-${BUILD_NUMBER}
+                    docker rm test-${BUILD_NUMBER}
+                """
+            }
 
-            stage('Deploy to EC2 Server with Ansible') {
-		        echo "🚀 Deploying ${fullImageName} to EC2 server using Ansible..."
-		    
-		        withCredentials([sshUserPrivateKey(
-		            credentialsId: 'ec2-server-ssh-key',
-		            keyFileVariable: 'SSH_KEY',
-		            usernameVariable: 'SSH_USER'
-		        )]) {
-		            sh '''
-		                cd projects/fastAPI_procmon/ansible
-		            
-		                # Copy SSH key to temporary location for Ansible
-		                cp ${SSH_KEY} /tmp/ssh_key
-		                chmod 600 /tmp/ssh_key
-		            
-		                if ansible ec2_servers -m ping; then
-		                    ansible-playbook deploy.yml \
-		                        -e "image_name=''' + fullImageName + '''" \
-		                        -e "deployment_environment=''' + environment + '''" \
-		                        -v
-		                
-		                    echo "🌐 Application should be available at: http://13.53.43.243:8000"
-		                else
-		                    echo "❌ Ansible connectivity failed, skipping deployment"
-		                    exit 1
-		                fi
-		            
-		                # Cleanup temporary SSH key
-		                rm -f /tmp/ssh_key
-		            '''
-		        }
-		    }
-	        
-	        stage('Cleanup Local Images') {
-	            sh """
-	                # Keep only the latest 3 builds locally
-	                docker images ${dockerHubRepo} --format "table {{.Tag}}" | grep -E '^(development|production)-[0-9]+\$' | sort -nr | tail -n +4 | xargs -r -I {} docker rmi ${dockerHubRepo}:{} || true
-	            """
-	        }
-	        
-	        echo "🎉 Pipeline completed successfully!"
-	        echo "✅ Built: ${fullImageName}"
-	        echo "✅ /healthz endpoint tested and working"
-	        echo "✅ Pushed to Docker Hub: ${dockerHubRepo}"
-	        
-	    } catch (Exception e) {
-	        echo "❌ Pipeline failed: ${e.getMessage()}"
-	        sh "docker stop fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
-	        sh "docker rm fastapi-test-${environment}-${BUILD_NUMBER} 2>/dev/null || true"
-	        throw e
-	    }
+            stage('Pre-Deployment Health Check') {
+                echo "🔍 Checking current deployment status..."
+                
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-server-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh """
+                        cp \${SSH_KEY} /tmp/ssh_key
+                        chmod 600 /tmp/ssh_key
+                        
+                        ssh -i /tmp/ssh_key -o StrictHostKeyChecking=no ubuntu@${ec2_ip} \\
+                            "curl -s http://localhost:8000/healthz || echo 'No existing deployment'"
+                        
+                        rm -f /tmp/ssh_key
+                    """
+                }
+            }
+
+            stage('Zero-Downtime Deployment') {
+                echo "🚀 Starting zero-downtime deployment to ${ec2_ip}..."
+                
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-server-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh '''
+                        cd projects/fastAPI_procmon/ansible
+                        
+                        # Update inventory with current EC2 IP
+                        echo "[ec2_servers]" > inventory.ini
+                        echo "''' + ec2_ip + ''' ansible_user=ubuntu ansible_ssh_private_key_file=/tmp/ssh_key ansible_ssh_common_args='-o StrictHostKeyChecking=no'" >> inventory.ini
+                        
+                        # Copy SSH key and nginx template
+                        cp ${SSH_KEY} /tmp/ssh_key
+                        chmod 600 /tmp/ssh_key
+                        
+                        # Create nginx template if it doesn't exist
+                        cat > nginx.conf.j2 << 'EOF'
+upstream fastapi_backend {
+    server 127.0.0.1:{{ backend_port }} max_fails=3 fail_timeout=30s;
+}
+
+server {
+    listen {{ public_port }} default_server;
+    server_name _;
+    
+    location / {
+        proxy_pass http://fastapi_backend;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+    
+    location /healthz {
+        proxy_pass http://fastapi_backend/healthz;
+    }
+}
+EOF
+                        
+                        # Run zero-downtime deployment
+                        ansible-playbook deploy-zero-downtime.yml \
+                            -e "image_name=''' + fullImageName + '''" \
+                            -e "deployment_environment=''' + environment + '''" \
+                            -e "domain_name=ameed.de" \
+                            -v
+                        
+                        rm -f /tmp/ssh_key
+                    '''
+                }
+            }
+            
+            stage('Post-Deployment Verification') {
+                echo "✅ Verifying deployment..."
+                
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-server-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh '''
+                        cd projects/fastAPI_procmon/ansible
+                        
+                        cp ${SSH_KEY} /tmp/ssh_key
+                        chmod 600 /tmp/ssh_key
+                        
+                        # Run verification playbook
+                        ansible-playbook verify-deployment.yml -v
+                        
+                        # Run monitoring for 30 seconds
+                        ansible-playbook monitoring.yml -e "monitoring_duration=30" -v
+                        
+                        rm -f /tmp/ssh_key
+                    '''
+                }
+            }
+            
+            stage('Cleanup') {
+                sh """
+                    # Clean up local Docker resources
+                    docker buildx prune -f --filter until=24h || true
+                    docker system prune -f --filter until=24h || true
+                    
+                    # Keep only latest 5 images locally
+                    docker images ${dockerHubRepo} --format "{{.Tag}}" | \\
+                        grep -E '^${environment}-' | \\
+                        sort -V | \\
+                        head -n -5 | \\
+                        xargs -r -I {} docker rmi ${dockerHubRepo}:{} || true
+                """
+            }
+            
+            echo "🎉 Zero-downtime deployment completed successfully!"
+            echo "✅ Deployed: ${fullImageName}"
+            echo "🌐 Application URL: http://${ec2_ip}:8000"
+            echo "🔗 Future URL: https://ameed.de (after DNS propagation)"
+            
+            currentBuild.description = "Deployed ${environment}-${imageTag}-${gitCommit} with zero downtime"
+            
+        } catch (Exception e) {
+            echo "❌ Pipeline failed: ${e.getMessage()}"
+            
+            // Attempt rollback
+            stage('Rollback on Failure') {
+                echo "🔄 Attempting rollback..."
+                
+                withCredentials([sshUserPrivateKey(
+                    credentialsId: 'ec2-server-ssh-key',
+                    keyFileVariable: 'SSH_KEY',
+                    usernameVariable: 'SSH_USER'
+                )]) {
+                    sh '''
+                        cd projects/fastAPI_procmon/ansible
+                        
+                        cp ${SSH_KEY} /tmp/ssh_key
+                        chmod 600 /tmp/ssh_key
+                        
+                        ansible-playbook rollback-deployment.yml -v || echo "Rollback failed or not needed"
+                        
+                        rm -f /tmp/ssh_key
+                    '''
+                }
+            }
+            
+            throw e
+        }
     }
 }
