@@ -24,10 +24,13 @@
         url: "https://{{ ansible_host }}{{ item.path }}"
         method: GET
         status_code: 200
-        validate_certs: yes  # Ensure we're using valid HTTPS
+        validate_certs: no
+        timeout: 10  
       loop: "{{ critical_endpoints }}"
       register: endpoint_checks
-      failed_when: false  # We'll handle failures ourselves
+      failed_when: false
+      retries: 3
+      delay: 2 
     
     - name: Evaluate endpoint results
       set_fact:

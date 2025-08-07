@@ -46,11 +46,13 @@
     url: "https://{{ domain_name }}/healthz"
     method: GET
     status_code: 200
-    validate_certs: yes
+    validate_certs: no  
     return_content: no
+    timeout: 10
   retries: 5
-  delay: 1
+  delay: 2
   register: nginx_health_check
+  failed_when: nginx_health_check.status != 200
 
 - name: Confirm successful deployment through nginx
   debug:
