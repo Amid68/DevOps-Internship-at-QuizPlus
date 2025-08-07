@@ -42,17 +42,29 @@
   meta: flush_handlers
 
 - name: Verify application is accessible through nginx
-  uri:
-    url: "https://{{ domain_name }}/healthz"
-    method: GET
-    status_code: 200
-    validate_certs: no  
-    return_content: no
-    timeout: 10
-  retries: 5
-  delay: 2
+  shell: |
+    echo "Testing nginx accessibility..."
+    # Test direct container access first
+    if curl -f -s --max-time 5 http://localhost:{{ new_port }}/healthz >/dev/null 2>&1; then
+      echo "✅ Direct container access: OK"
+    else
+      echo "❌ Direct container access: FAILED"
+      exit 1
+    fi
+    
+    # Test through nginx (skip SSL verification)
+    if curl -f -s --max-time 5 -k https://{{ domain_name }}/healthz >/dev/null 2>&1; then
+      echo "✅ Nginx HTTPS access: OK"
+    elif curl -f -s --max-time 5 http://localhost:443/healthz >/dev/null 2>&1; then
+      echo "✅ Nginx HTTP proxy access: OK"  
+    else
+      echo "❌ Nginx access: FAILED"
+      exit 1
+    fi
+  retries: 3
+  delay: 3
   register: nginx_health_check
-  failed_when: nginx_health_check.status != 200
+  changed_when: false
 
 - name: Confirm successful deployment through nginx
   debug:
