@@ -19,23 +19,29 @@
         name: "Process Monitor"
   
   tasks:
-    - name: Check application health endpoint
-      uri:
-        url: "https://{{ ansible_host }}{{ item.path }}"
-        method: GET
-        status_code: 200
-        validate_certs: no
-        timeout: 10  
+    - name: Check application health endpoints using curl
+      shell: |
+        endpoint="{{ item.path }}"
+        url="https://{{ ansible_host }}${endpoint}"
+        
+        echo "Testing endpoint: ${endpoint}"
+        if curl -f -s --max-time 10 --insecure "$url" >/dev/null 2>&1; then
+          echo "✅ ${endpoint} - SUCCESS"
+          exit 0
+        else
+          echo "❌ ${endpoint} - FAILED"
+          exit 1
+        fi
       loop: "{{ critical_endpoints }}"
       register: endpoint_checks
-      failed_when: false
+      failed_when: endpoint_checks.rc != 0
       retries: 3
-      delay: 2 
+      delay: 2
+      changed_when: false
     
     - name: Evaluate endpoint results
       set_fact:
-        failed_endpoints: "{{ endpoint_checks.results | selectattr('status', 'undefined') | list + 
-                              endpoint_checks.results | selectattr('status', 'ne', 200) | list }}"
+        failed_endpoints: "{{ endpoint_checks.results | selectattr('rc', 'ne', 0) | list }}"
     
     - name: Report verification results
       debug:
@@ -46,8 +52,8 @@
       fail:
         msg: |
           ❌ Verification failed! The following endpoints are not responding:
-          {% for endpoint in failed_endpoints %}
-          - {{ endpoint.item.name }}: {{ endpoint.msg | default('No response') }}
+          {% for result in failed_endpoints %}
+          - {{ result.item.name }}: {{ result.stdout | default('Unknown error') }}
           {% endfor %}
       when: failed_endpoints | length > 0
     
