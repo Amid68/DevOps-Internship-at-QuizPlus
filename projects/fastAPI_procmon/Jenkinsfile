@@ -77,7 +77,7 @@ node {
                     echo "🧪 Testing container locally..."
                     docker run -d --name test-${BUILD_NUMBER} --platform linux/arm64 -p 9999:8000 ${fullImageName}
                     
-                    sleep 5
+                    sleep 30
                     
                     # Test all endpoints
                     for endpoint in healthz processes info metrics; do
