@@ -42,13 +42,12 @@
   meta: flush_handlers
 
 - name: Verify application is accessible through nginx
-  block:
-    - uri:
-        url: "https://{{ domain_name }}/healthz"
-        method: GET
-        status_code: 200
-        validate_certs: yes
-        return_content: no
+  uri:
+    url: "https://{{ domain_name }}/healthz"
+    method: GET
+    status_code: 200
+    validate_certs: yes
+    return_content: no
   retries: 5
   delay: 1
   register: nginx_health_check
