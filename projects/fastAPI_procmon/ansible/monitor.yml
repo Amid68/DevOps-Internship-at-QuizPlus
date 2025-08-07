@@ -95,7 +95,7 @@
     - name: Check container resource usage during monitoring
       shell: |
         echo "===== Container Resource Usage ====="
-        docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}" | grep fastapi-procmon || echo "No containers found"
+        docker stats --no-stream --format "table {{ '{{.Container}}' }}\t{{ '{{.CPUPerc}}' }}\t{{ '{{.MemUsage}}' }}\t{{ '{{.NetIO}}' }}" | grep fastapi-procmon || echo "No containers found"
       become: true
       become_user: ubuntu
       register: resource_usage
