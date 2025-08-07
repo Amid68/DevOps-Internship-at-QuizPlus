@@ -19,9 +19,14 @@ server {
     server_name {{ domain_name | default('ameed.xyz') }};
     
     # Try Let's Encrypt first, fallback to self-signed
-    ssl_certificate {% if ansible_facts is defined and ansible_facts.get('letsencrypt_cert_exists', false) %}/etc/letsencrypt/live/{{ domain_name | default('ameed.xyz') }}/fullchain.pem{% else %}/etc/ssl/certs/{{ domain_name | default('ameed.xyz') }}.pem{% endif %};
-    ssl_certificate_key {% if ansible_facts is defined and ansible_facts.get('letsencrypt_cert_exists', false) %}/etc/letsencrypt/live/{{ domain_name | default('ameed.xyz') }}/privkey.pem{% else %}/etc/ssl/private/{{ domain_name | default('ameed.xyz') }}.key{% endif %};
+    {% set letsencrypt_cert = '/etc/letsencrypt/live/' + (domain_name | default('ameed.xyz')) + '/fullchain.pem' %}
+    {% set letsencrypt_key = '/etc/letsencrypt/live/' + (domain_name | default('ameed.xyz')) + '/privkey.pem' %}
+    {% set selfsigned_cert = '/etc/ssl/certs/' + (domain_name | default('ameed.xyz')) + '.pem' %}
+    {% set selfsigned_key = '/etc/ssl/private/' + (domain_name | default('ameed.xyz')) + '.key' %}
     
+    ssl_certificate {{ letsencrypt_cert }};
+    ssl_certificate_key {{ letsencrypt_key }};
+
     # Basic SSL configuration
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
