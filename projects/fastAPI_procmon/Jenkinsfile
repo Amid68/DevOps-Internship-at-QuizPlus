@@ -5,12 +5,12 @@ node {
             'prod': [
                 'branch': 'main',
                 'environment': 'production',
-                'ec2_ip': '16.16.75.141'  // Update with Elastic IP after Terraform
+                'ec2_ip': '16.16.75.141'  
             ],
             'dev': [
                 'branch': 'dev',
                 'environment': 'development',
-                'ec2_ip': 'YOUR_DEV_ELASTIC_IP'  // Update after Terraform
+                'ec2_ip': '16.170.161.51' 
             ]
         ]
     
@@ -241,7 +241,7 @@ EOF
                         cp ${SSH_KEY} /tmp/ssh_key
                         chmod 600 /tmp/ssh_key
                         
-                        ansible-playbook rollback-deployment.yml -v || echo "Rollback failed or not needed"
+                        ansible-playbook rollback.yml -v || echo "Rollback failed or not needed"
                         
                         rm -f /tmp/ssh_key
                     '''
