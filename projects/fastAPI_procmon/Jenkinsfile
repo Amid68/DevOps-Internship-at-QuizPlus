@@ -74,22 +74,30 @@ node {
             
             stage('Test Container Locally') {
                 sh """
-                    echo "🧪 Testing container locally..."
-                    docker run -d --name test-${BUILD_NUMBER} --platform linux/arm64 -p 8000:8000 ${fullImageName}
+                    echo "🧪 Testing container in-container..."
+                    docker run -d --name test-${BUILD_NUMBER} --platform linux/arm64 ${fullImageName}
                     
-                    # Test all endpoints
+                    # Wait for container to initialize
+                    sleep 5
+            
+                    # Optionally install curl inside the container (if your image doesn't include it)
+                    docker exec test-${BUILD_NUMBER} sh -c "apt-get update -qq && apt-get install -y curl -qq" 2>/dev/null || true
+                    
+                    # Loop through endpoints and test via docker exec
                     for endpoint in healthz processes info metrics; do
-                        echo "Testing /\${endpoint}..."
-                        HTTP_STATUS=\$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/\${endpoint})
+                        echo "Testing /\${endpoint} inside container..."
+                        HTTP_STATUS=\$(docker exec test-${BUILD_NUMBER} curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/\${endpoint})
                         if [ "\$HTTP_STATUS" = "200" ]; then
-                            echo "✅ /\${endpoint} endpoint passed"
+                            echo "✅ /\${endpoint} passed"
                         else
-                            echo "❌ /\${endpoint} endpoint failed with status: \$HTTP_STATUS"
+                            echo "❌ /\${endpoint} failed with HTTP code: \$HTTP_STATUS"
                             docker logs test-${BUILD_NUMBER}
+                            docker stop test-${BUILD_NUMBER}
+                            docker rm test-${BUILD_NUMBER}
                             exit 1
                         fi
                     done
-                    
+            
                     docker stop test-${BUILD_NUMBER}
                     docker rm test-${BUILD_NUMBER}
                 """
