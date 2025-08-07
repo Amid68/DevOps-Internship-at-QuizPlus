@@ -1,0 +1,10 @@
+# roles/fastapi_deployment/handlers/main.yml
+# Handlers are triggered by notify statements and run only once
+# even if notified multiple times - perfect for service reloads
+
+- name: reload nginx
+  systemd:
+    name: nginx
+    state: reloaded
+  # Using systemd module instead of service for better control
+  # This ensures nginx gracefully reloads without dropping connections

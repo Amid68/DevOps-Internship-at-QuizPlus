@@ -1,0 +1,26 @@
+# group_vars/ec2_servers.yml
+# These variables apply to all hosts in the ec2_servers group
+# Keeping them here instead of in the playbook makes them easier to manage
+# and allows different environments to have different settings
+
+# Application configuration
+app_name: "fastapi-procmon"
+app_port: 8000  # Port the FastAPI app listens on inside the container
+
+# Blue-green deployment ports
+# These are the staging ports where we test new deployments before switching
+blue_port: 8001
+green_port: 8002
+
+# Public-facing port (nginx listens here)
+# Using 443 for HTTPS in production - this is standard and shouldn't change
+public_port: 443
+
+# Health check configuration
+# These values are tuned for your FastAPI app's startup time
+health_check_retries: 30  # Maximum number of retries
+health_check_delay: 2     # Seconds between retries
+
+# Connection draining time before stopping old container
+# 10 seconds is usually enough for most HTTP requests to complete
+drain_timeout: 10

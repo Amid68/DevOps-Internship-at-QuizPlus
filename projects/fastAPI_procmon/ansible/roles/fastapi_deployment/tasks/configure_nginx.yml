@@ -1,0 +1,55 @@
+# roles/fastapi_deployment/tasks/configure_nginx.yml
+# This file handles nginx configuration and traffic switching
+# Separated because nginx configuration is a distinct responsibility
+
+- name: Install nginx if not present
+  package:
+    name: nginx
+    state: present
+  # Not specifying version as we want the distro's stable version
+
+- name: Configure nginx for blue-green deployment
+  template:
+    src: nginx.conf.j2
+    dest: "{{ nginx_config_path }}"
+    mode: '0644'
+    owner: root
+    group: root
+    backup: yes  # Keep a backup before overwriting
+  vars:
+    backend_port: "{{ new_port }}"
+  notify: reload nginx  # Use handler for nginx reload
+
+- name: Enable nginx site
+  file:
+    src: "{{ nginx_config_path }}"
+    dest: "{{ nginx_enabled_path }}"
+    state: link
+  notify: reload nginx
+
+- name: Test nginx configuration
+  command: nginx -t
+  changed_when: false  # This is a validation check only
+  register: nginx_test
+
+- name: Fail if nginx configuration is invalid
+  fail:
+    msg: "Nginx configuration test failed: {{ nginx_test.stderr }}"
+  when: nginx_test.rc != 0
+
+# Force handler execution now for immediate traffic switch
+- name: Switch traffic to new container
+  meta: flush_handlers
+
+- name: Verify application is accessible through nginx
+  uri:
+    url: "http://localhost:{{ public_port }}/healthz"
+    method: GET
+    status_code: 200
+  retries: 5
+  delay: 1
+  register: nginx_health_check
+
+- name: Confirm successful deployment through nginx
+  debug:
+    msg: "✅ Traffic successfully switched to {{ new_container }} container"

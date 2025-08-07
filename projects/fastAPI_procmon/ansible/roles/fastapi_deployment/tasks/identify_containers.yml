@@ -1,0 +1,33 @@
+# roles/fastapi_deployment/tasks/identify_containers.yml
+# This file identifies which container is currently active
+# Keeping this separate makes it reusable for both deployment and rollback
+
+- name: Identify currently active container
+  # Using shell here is justified because docker doesn't have a module for this specific check
+  shell: |
+    if docker ps --format "table {{.Names}}" | grep -q "{{ blue_container }}"; then
+      echo "blue"
+    elif docker ps --format "table {{.Names}}" | grep -q "{{ green_container }}"; then
+      echo "green"
+    else
+      echo "none"
+    fi
+  register: active_container
+  become_user: ubuntu
+  changed_when: false  # This is a read-only operation
+
+- name: Set deployment targets based on current state
+  set_fact:
+    new_container: "{{ 'green' if active_container.stdout == 'blue' else 'blue' }}"
+    old_container: "{{ active_container.stdout if active_container.stdout != 'none' else '' }}"
+    new_container_name: "{{ green_container if active_container.stdout == 'blue' else blue_container }}"
+    old_container_name: "{{ blue_container if active_container.stdout == 'blue' else green_container }}"
+    new_port: "{{ green_port if active_container.stdout == 'blue' else blue_port }}"
+    old_port: "{{ blue_port if active_container.stdout == 'blue' else green_port }}"
+
+- name: Display deployment strategy
+  debug:
+    msg: 
+      - "Current active: {{ active_container.stdout }}"
+      - "Deploying to: {{ new_container }}"
+      - "New container: {{ new_container_name }} on port {{ new_port }}"

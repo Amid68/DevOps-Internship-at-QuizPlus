@@ -1,0 +1,20 @@
+# roles/fastapi_deployment/defaults/main.yml
+# Default values that can be overridden when calling the role
+# These are values that might change between deployments or environments
+
+# Container naming convention - using color strategy for zero-downtime
+blue_container: "{{ app_name }}-blue"
+green_container: "{{ app_name }}-green"
+
+# Nginx configuration
+nginx_site_name: "fastapi"
+nginx_config_path: "/etc/nginx/sites-available/{{ nginx_site_name }}"
+nginx_enabled_path: "/etc/nginx/sites-enabled/{{ nginx_site_name }}"
+
+# Logging paths - keeping standard nginx locations
+nginx_access_log: "/var/log/nginx/fastapi_access.log"
+nginx_error_log: "/var/log/nginx/fastapi_error.log"
+
+# Docker cleanup settings
+cleanup_old_images: true
+images_to_keep: 3  # Keep last 3 images for potential rollback

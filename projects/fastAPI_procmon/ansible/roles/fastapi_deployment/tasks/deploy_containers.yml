@@ -1,0 +1,55 @@
+# roles/fastapi_deployment/tasks/deploy_container.yml
+# This file handles the actual container deployment
+# Separated from identification and nginx config for clarity and reusability
+
+- name: Pull new Docker image
+  docker_image:
+    name: "{{ docker_image }}"
+    source: pull
+    force_source: true  # Always pull to ensure we have the latest
+  become_user: ubuntu
+
+- name: Start new container on staging port
+  docker_container:
+    name: "{{ new_container_name }}"
+    image: "{{ docker_image }}"
+    state: started
+    restart_policy: unless-stopped  # Container restarts after reboot
+    ports:
+      - "{{ new_port }}:{{ app_port }}"
+    healthcheck:
+      # Using curl for health check as it's built into most base images
+      test: ["CMD", "curl", "-f", "http://localhost:{{ app_port }}/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s  # Give the app time to start up
+    env:
+      ENVIRONMENT: "{{ deployment_environment }}"
+      CONTAINER_COLOR: "{{ new_container }}"  # Useful for debugging
+  become_user: ubuntu
+
+- name: Wait for new container to be healthy
+  uri:
+    url: "http://localhost:{{ new_port }}/healthz"
+    method: GET
+    status_code: 200
+  retries: "{{ health_check_retries }}"
+  delay: "{{ health_check_delay }}"
+  until: result.status == 200
+  register: result
+
+- name: Run smoke tests on new container
+  uri:
+    url: "http://localhost:{{ new_port }}/processes"
+    method: GET
+    status_code: 200
+  register: smoke_test
+
+- name: Verify smoke test response
+  assert:
+    that:
+      - smoke_test.status == 200
+      - smoke_test.json is defined
+    fail_msg: "Smoke tests failed on new container - deployment aborted"
+    success_msg: "Smoke tests passed successfully"
