@@ -5,9 +5,9 @@
 - name: Identify currently active container
   # Using shell here is justified because docker doesn't have a module for this specific check
   shell: |
-    if docker ps --format "table {{.Names}}" | grep -q "{{ blue_container }}"; then
+    if docker ps --format "table {{'{{.Names}}'}}" | grep -q "{{ blue_container }}"; then
       echo "blue"
-    elif docker ps --format "table {{.Names}}" | grep -q "{{ green_container }}"; then
+    elif docker ps --format "table {{'{{.Names}}'}}" | grep -q "{{ green_container }}"; then
       echo "green"
     else
       echo "none"

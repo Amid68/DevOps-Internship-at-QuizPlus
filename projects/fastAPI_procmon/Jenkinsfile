@@ -162,7 +162,7 @@ EOF
                         ansible-playbook deploy-zero-downtime.yml \
                             -e "image_name=''' + fullImageName + '''" \
                             -e "deployment_environment=''' + environment + '''" \
-                            -e "domain_name=ameed.de" \
+                            -e "domain_name=ameed.xyz" \
                             -v
                         
                         rm -f /tmp/ssh_key
@@ -213,7 +213,7 @@ EOF
             echo "🎉 Zero-downtime deployment completed successfully!"
             echo "✅ Deployed: ${fullImageName}"
             echo "🌐 Application URL: http://${ec2_ip}:8000"
-            echo "🔗 Future URL: https://ameed.de (after DNS propagation)"
+            echo "🔗 URL: https://ameed.xyz"
             
             currentBuild.description = "Deployed ${environment}-${imageTag}-${gitCommit} with zero downtime"
             
