@@ -165,7 +165,7 @@ server {
 EOF
                         
                         # Run zero-downtime deployment
-                        ansible-playbook deploy-zero-downtime.yml \
+                        ansible-playbook deploy.yml \
                             -e "image_name=''' + fullImageName + '''" \
                             -e "deployment_environment=''' + environment + '''" \
                             -e "domain_name=ameed.xyz" \
@@ -191,10 +191,10 @@ EOF
                         chmod 600 /tmp/ssh_key
                         
                         # Run verification playbook
-                        ansible-playbook verify-deployment.yml -v
+                        ansible-playbook verify.yml -v
                         
                         # Run monitoring for 30 seconds
-                        ansible-playbook monitoring.yml -e "monitoring_duration=30" -v
+                        ansible-playbook monitor.yml -e "monitoring_duration=30" -v
                         
                         rm -f /tmp/ssh_key
                     '''
