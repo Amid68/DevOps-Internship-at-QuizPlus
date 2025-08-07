@@ -17,11 +17,10 @@
   
   tasks:
     - name: Check current container state
-      # Reusing the same logic from deployment for consistency
       shell: |
-        if docker ps --format "table {{ '{{.Names}} }}" | grep -q "{{ app_name }}-blue"; then
+        if docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-blue"; then
           echo "blue"
-        elif docker ps --format "table {{ '{{.Names}} }}" | grep -q "{{ app_name }}-green"; then
+        elif docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-green"; then
           echo "green"
         else
           echo "none"
@@ -30,10 +29,10 @@
       become_user: ubuntu
       changed_when: false
     
-    - name: Check if previous container exists
+    - name: Check if previous container exists  
       shell: |
         inactive="{{ app_name }}-{{ 'green' if current_container.stdout == 'blue' else 'blue' }}"
-        if docker ps -a --format "table {{.Names}}" | grep -q "$inactive"; then
+        if docker ps -a --format "table {{ '{{.Names}}' }}" | grep -q "$inactive"; then
           echo "exists"
         else
           echo "not_found"
