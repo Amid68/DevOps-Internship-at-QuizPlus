@@ -31,7 +31,7 @@
     docker image prune -f
     
     # Keep only the last N images of our app
-    docker images --format "{{.Repository}}:{{.Tag}}" | \
+    docker images --format "{{ '{{.Repository}}:{{.Tag}}' }}" | \
       grep "{{ app_name }}" | \
       tail -n +{{ images_to_keep + 1 }} | \
       xargs -r docker rmi -f
