@@ -74,17 +74,21 @@
       changed_when: false
     
     - name: Check which container is currently active
-      uri:
-        url: "https://{{ ansible_host }}/healthz"
-        method: GET
+      shell: |
+        # Get container info from healthz endpoint 
+        if container_info=$(curl -f -s --max-time 10 --insecure https://{{ ansible_host }}/healthz 2>/dev/null); then
+          echo "$container_info" | grep -o '"container":"[^"]*"' | cut -d'"' -f4 || echo "unknown"
+        else
+          echo "unknown"
+        fi
       register: health_response
       changed_when: false
     
     - name: Identify active container from Docker
       shell: |
-        if docker ps --format "table {{.Names}}" | grep -q "fastapi-procmon-blue"; then
+        if docker ps --format "table {{ '{{.Names}}' }}" | grep -q "fastapi-procmon-blue"; then
           echo "blue"
-        elif docker ps --format "table {{.Names}}" | grep -q "fastapi-procmon-green"; then
+        elif docker ps --format "table {{ '{{.Names}}' }}" | grep -q "fastapi-procmon-green"; then
           echo "green"
         else
           echo "unknown"
@@ -99,6 +103,6 @@
         msg:
           - "🎯 Deployment Verification Complete"
           - "📊 Active Container: {{ active_container.stdout }}"
-          - "⚡ Average Response Time: {{ response_time.stdout }} seconds"
+          - "⚡ Average Response Time: {{ response_time.stdout }} seconds"  
           - "✅ All critical endpoints are operational"
           - "🌐 Application URL: https://{{ ansible_host }}"
