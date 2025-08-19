@@ -1,0 +1,48 @@
+# roles/fastapi_deployment/tasks/setup_ssl.yml
+# Add this as a new task file for SSL certificate management
+
+- name: Check if Let's Encrypt certificate exists
+  stat:
+    path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+  register: letsencrypt_cert
+
+- name: Check if self-signed certificate exists
+  stat:
+    path: "/etc/ssl/certs/{{ domain_name }}.pem"
+  register: selfsigned_cert
+
+- name: Create SSL directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - /etc/ssl/certs
+    - /etc/ssl/private
+
+- name: Generate self-signed certificate if no SSL certificate exists
+  command: >
+    openssl req -x509 -nodes -days 365 -newkey rsa:2048
+    -keyout /etc/ssl/private/{{ domain_name }}.key
+    -out /etc/ssl/certs/{{ domain_name }}.pem
+    -subj "/C=US/ST=State/L=City/O=Organization/CN={{ domain_name }}"
+  when: not letsencrypt_cert.stat.exists and not selfsigned_cert.stat.exists
+
+- name: Set SSL certificate paths
+  set_fact:
+    ssl_cert_path: "{{ '/etc/letsencrypt/live/' + domain_name + '/fullchain.pem' if letsencrypt_cert.stat.exists else '/etc/ssl/certs/' + domain_name + '.pem' }}"
+    ssl_key_path: "{{ '/etc/letsencrypt/live/' + domain_name + '/privkey.pem' if letsencrypt_cert.stat.exists else '/etc/ssl/private/' + domain_name + '.key' }}"
+
+- name: Test SSL certificate
+  command: openssl x509 -in {{ ssl_cert_path }} -text -noout
+  register: ssl_test
+  failed_when: ssl_test.rc != 0
+  changed_when: false
+
+- name: Display SSL certificate info
+  debug:
+    msg:
+      - "SSL Certificate configured:"
+      - "Cert: {{ ssl_cert_path }}"
+      - "Key: {{ ssl_key_path }}"
+      - "Type: {{ 'Let\'s Encrypt' if letsencrypt_cert.stat.exists else 'Self-signed' }}"

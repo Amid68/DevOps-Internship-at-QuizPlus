@@ -1,0 +1,37 @@
+resource "aws_security_group" "ssh" {
+  description   = "Security group for SSH into EC2 instance"
+  vpc_id        = data.aws_vpc.default.id
+
+  ingress {
+    description = "SSH"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = var.ssh_cidr_blocks
+  }
+}
+
+resource "aws_security_group" "https" {
+  description   = "Security group for inbound HTTPS"
+  vpc_id        = data.aws_vpc.default.id
+
+  ingress {
+    description = "HTTPS"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "egress" {
+  description   = "Security group for all outbound traffic from EC2"
+  vpc_id        = data.aws_vpc.default.id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}

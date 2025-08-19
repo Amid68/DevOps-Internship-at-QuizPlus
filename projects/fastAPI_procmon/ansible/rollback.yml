@@ -1,0 +1,104 @@
+---
+# rollback.yml
+# Emergency rollback playbook - switches back to the previous container
+# This is designed to be run manually when something goes wrong
+
+- name: Rollback to Previous Deployment
+  hosts: ec2_servers
+  become: true
+  gather_facts: false
+  
+  vars:
+    # These match what's in group_vars but repeated here for clarity
+    app_name: "fastapi-procmon"
+    blue_port: 8001
+    green_port: 8002
+    public_port: 443
+  
+  tasks:
+    - name: Check current container state
+      shell: |
+        if docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-blue"; then
+          echo "blue"
+        elif docker ps --format "table {{ '{{.Names}}' }}" | grep -q "{{ app_name }}-green"; then
+          echo "green"
+        else
+          echo "none"
+        fi
+      register: current_container
+      become_user: ubuntu
+      changed_when: false
+    
+    - name: Check if previous container exists  
+      shell: |
+        inactive="{{ app_name }}-{{ 'green' if current_container.stdout == 'blue' else 'blue' }}"
+        if docker ps -a --format "table {{ '{{.Names}}' }}" | grep -q "$inactive"; then
+          echo "exists"
+        else
+          echo "not_found"
+        fi
+      register: inactive_exists
+      become_user: ubuntu
+      changed_when: false
+    
+    - name: Fail if no container to rollback to
+      fail:
+        msg: "No inactive container found for rollback - nothing to restore"
+      when: inactive_exists.stdout == "not_found"
+    
+    - name: Set rollback targets
+      set_fact:
+        rollback_container: "{{ app_name }}-{{ 'green' if current_container.stdout == 'blue' else 'blue' }}"
+        rollback_port: "{{ green_port if current_container.stdout == 'blue' else blue_port }}"
+        current_container_name: "{{ app_name }}-{{ current_container.stdout }}"
+    
+    - name: Start previous container
+      docker_container:
+        name: "{{ rollback_container }}"
+        state: started
+      become_user: ubuntu
+    
+    - name: Wait for container to be healthy
+      uri:
+        url: "http://localhost:{{ rollback_port }}/healthz"
+        method: GET
+        status_code: 200
+      retries: 30
+      delay: 2
+      register: health_check
+      until: health_check.status == 200
+    
+    - name: Update nginx to point to previous container
+      template:
+        src: roles/fastapi_deployment/templates/nginx.conf.j2
+        dest: /etc/nginx/sites-available/fastapi
+      vars:
+        backend_port: "{{ rollback_port }}"
+        nginx_access_log: "/var/log/nginx/fastapi_access.log"
+        nginx_error_log: "/var/log/nginx/fastapi_error.log"
+    
+    - name: Reload nginx
+      systemd:
+        name: nginx
+        state: reloaded
+    
+    - name: Verify rollback succeeded
+      uri:
+        url: "http://localhost:{{ public_port }}/healthz"
+        method: GET
+        status_code: 200
+    
+    - name: Stop the failed container
+      docker_container:
+        name: "{{ current_container_name }}"
+        state: stopped
+      become_user: ubuntu
+      when: current_container.stdout != "none"
+    
+    - name: Display rollback status
+      debug:
+        msg:
+          - "✅ Rollback completed successfully!"
+          - "🔄 Rolled back to: {{ rollback_container }}"
+          - "⚠️  Failed container ({{ current_container_name }}) has been stopped"
+          - "📝 Remember to investigate why the deployment failed"

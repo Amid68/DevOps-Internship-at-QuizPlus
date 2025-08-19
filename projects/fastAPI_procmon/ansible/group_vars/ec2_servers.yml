@@ -1,0 +1,40 @@
+# group_vars/ec2_servers.yml
+# These variables apply to all hosts in the ec2_servers group
+# Keeping them here instead of in the playbook makes them easier to manage
+# and allows different environments to have different settings
+
+# Application configuration
+app_name: "fastapi-procmon"
+app_port: 8000  # Port the FastAPI app listens on inside the container
+
+# Domain configuration - UPDATED for your domain
+domain_name: "ameed.xyz"
+
+# Blue-green deployment ports
+blue_port: 8001
+green_port: 8002
+
+# Public-facing port (nginx listens here)
+public_port: 443
+
+# SSL certificate paths (Let's Encrypt paths)
+ssl_cert_path: "/etc/letsencrypt/live/{{ domain_name }}/fullchain.pem"
+ssl_key_path: "/etc/letsencrypt/live/{{ domain_name }}/privkey.pem"
+
+# Fallback to self-signed if Let's Encrypt fails
+ssl_cert_path_fallback: "/etc/ssl/certs/{{ domain_name }}.pem"
+ssl_key_path_fallback: "/etc/ssl/private/{{ domain_name }}.key"
+
+# Health check configuration
+health_check_retries: 30
+health_check_delay: 2
+
+# Connection draining time before stopping old container
+drain_timeout: 10
+
+# Nginx configuration
+nginx_access_log: "/var/log/nginx/fastapi_access.log"
+nginx_error_log: "/var/log/nginx/fastapi_error.log"
+
+# Email for SSL certificate (optional)
+admin_email: "admin@{{ domain_name }}"

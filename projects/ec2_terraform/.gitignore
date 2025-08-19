@@ -1,0 +1,37 @@
+# Terraform files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*tfplan*
+.terraformrc
+terraform.rc
+
+# Terraform variable files (potentially sensitive)
+*.tfvars
+*.tfvars.json
+
+# Override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# SSH Keys - NEVER COMMIT THESE!
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Crash log files
+crash.log
+crash.*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

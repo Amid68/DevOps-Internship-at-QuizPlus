@@ -1,0 +1,46 @@
+# roles/fastapi_deployment/tasks/cleanup.yml
+# This file handles cleanup of old containers and images
+# Separated to make it optional and reusable
+
+- name: Wait for connections to drain from old container
+  pause:
+    seconds: "{{ drain_timeout }}"
+  when: old_container != ''
+
+- name: Stop old container gracefully
+  docker_container:
+    name: "{{ old_container_name }}"
+    state: stopped
+    stop_timeout: 10  # Give the container time to shut down cleanly
+  when: old_container != ''
+  become_user: ubuntu
+  ignore_errors: yes  # Don't fail deployment if old container is already gone
+
+- name: Remove old container
+  docker_container:
+    name: "{{ old_container_name }}"
+    state: absent
+  when: old_container != ''
+  become_user: ubuntu
+  ignore_errors: yes
+
+- name: Clean up old Docker images
+  # Keep this as shell because docker prune doesn't have all options in ansible module
+  shell: |
+    # Remove dangling images
+    docker image prune -f
+    
+    # Keep only the last N images of our app
+    docker images --format "{{ '{{.Repository}}:{{.Tag}}' }}" | \
+      grep "{{ app_name }}" | \
+      tail -n +{{ images_to_keep + 1 }} | \
+      xargs -r docker rmi -f
+  become_user: ubuntu
+  when: cleanup_old_images | default(true)
+  ignore_errors: yes  # Don't fail deployment if cleanup has issues
+  changed_when: false  # This is a cleanup operation
+
+- name: Report cleanup status
+  debug:
+    msg: "🧹 Cleanup completed - old {{ old_container }} container removed"
+  when: old_container != ''

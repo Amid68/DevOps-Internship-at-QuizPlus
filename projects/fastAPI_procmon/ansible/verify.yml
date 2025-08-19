@@ -1,0 +1,108 @@
+---
+# verify.yml
+# Post-deployment verification playbook
+# Run this after deployment to ensure everything is working correctly
+
+- name: Verify FastAPI Deployment Health
+  hosts: ec2_servers
+  become: false  # Don't need root for verification
+  gather_facts: false
+  
+  vars:
+    public_port: 443
+    # Define the endpoints we expect to be working
+    # These are specific to our FastAPI application
+    critical_endpoints:
+      - path: "/healthz"
+        name: "Health Check"
+      - path: "/processes"
+        name: "Process Monitor"
+  
+  tasks:
+    - name: Check application health endpoints using curl
+      shell: |
+        endpoint="{{ item.path }}"
+        url="https://{{ ansible_host }}${endpoint}"
+        
+        echo "Testing endpoint: ${endpoint}"
+        if curl -f -s --max-time 10 --insecure "$url" >/dev/null 2>&1; then
+          echo "✅ ${endpoint} - SUCCESS"
+          exit 0
+        else
+          echo "❌ ${endpoint} - FAILED"
+          exit 1
+        fi
+      loop: "{{ critical_endpoints }}"
+      register: endpoint_checks
+      failed_when: endpoint_checks.rc != 0
+      retries: 3
+      delay: 2
+      changed_when: false
+    
+    - name: Evaluate endpoint results
+      set_fact:
+        failed_endpoints: "{{ endpoint_checks.results | selectattr('rc', 'ne', 0) | list }}"
+    
+    - name: Report verification results
+      debug:
+        msg: "✅ All endpoints are healthy"
+      when: failed_endpoints | length == 0
+    
+    - name: Report failed endpoints
+      fail:
+        msg: |
+          ❌ Verification failed! The following endpoints are not responding:
+          {% for result in failed_endpoints %}
+          - {{ result.item.name }}: {{ result.stdout | default('Unknown error') }}
+          {% endfor %}
+      when: failed_endpoints | length > 0
+    
+    - name: Measure application response time
+      # Simple performance check to ensure the app is responsive
+      shell: |
+        total_time=0
+        iterations=5
+        
+        for i in $(seq 1 $iterations); do
+          response_time=$(curl -o /dev/null -s -w '%{time_total}' https://{{ ansible_host }}/processes)
+          total_time=$(echo "$total_time + $response_time" | bc)
+        done
+        
+        avg_time=$(echo "scale=3; $total_time / $iterations" | bc)
+        echo "$avg_time"
+      register: response_time
+      changed_when: false
+    
+    - name: Check which container is currently active
+      shell: |
+        # Get container info from healthz endpoint 
+        if container_info=$(curl -f -s --max-time 10 --insecure https://{{ ansible_host }}/healthz 2>/dev/null); then
+          echo "$container_info" | grep -o '"container":"[^"]*"' | cut -d'"' -f4 || echo "unknown"
+        else
+          echo "unknown"
+        fi
+      register: health_response
+      changed_when: false
+    
+    - name: Identify active container from Docker
+      shell: |
+        if docker ps --format "table {{ '{{.Names}}' }}" | grep -q "fastapi-procmon-blue"; then
+          echo "blue"
+        elif docker ps --format "table {{ '{{.Names}}' }}" | grep -q "fastapi-procmon-green"; then
+          echo "green"
+        else
+          echo "unknown"
+        fi
+      become: true
+      become_user: ubuntu
+      register: active_container
+      changed_when: false
+    
+    - name: Display verification summary
+      debug:
+        msg:
+          - "🎯 Deployment Verification Complete"
+          - "📊 Active Container: {{ active_container.stdout }}"
+          - "⚡ Average Response Time: {{ response_time.stdout }} seconds"  
+          - "✅ All critical endpoints are operational"
+          - "🌐 Application URL: https://{{ ansible_host }}"

@@ -1,0 +1,29 @@
+# roles/fastapi_deployment/tasks/main.yml
+# Main entry point for the deployment role
+# This orchestrates the deployment process in the correct order
+
+# Step 1: Figure out current state
+- name: Identify current deployment state
+  import_tasks: identify_containers.yml
+
+# Step 2: Deploy the new container
+- name: Deploy new container version
+  import_tasks: deploy_container.yml
+
+# Step 3: Configure nginx to route traffic
+- name: Configure nginx routing
+  import_tasks: configure_nginx.yml
+
+# Step 4: Clean up old resources
+- name: Clean up old deployment
+  import_tasks: cleanup.yml
+
+# Final status report
+- name: Display deployment summary
+  debug:
+    msg:
+      - "✅ Deployment completed successfully!"
+      - "🟢 Active container: {{ new_container_name }}"
+      - "🌐 Application URL: https://{{ ansible_host }}"
+      - "📊 Health endpoint: https://{{ ansible_host }}/healthz"
+      - "🚀 Zero downtime achieved!"

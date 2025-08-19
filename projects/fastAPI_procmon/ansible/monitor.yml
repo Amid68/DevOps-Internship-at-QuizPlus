@@ -1,0 +1,114 @@
+---
+# monitor.yml
+# Continuous monitoring playbook for deployment validation
+# This can be run during or after deployment to ensure stability
+
+- name: Monitor Application Availability
+  hosts: ec2_servers
+  become: false
+  gather_facts: false
+  
+  vars:
+    # Monitoring duration in seconds - 60 seconds is enough to catch immediate issues
+    monitoring_duration: 60
+    # How often to check - every 5 seconds gives us good granularity
+    check_interval: 5
+    # Availability threshold - we require 99% uptime during monitoring
+    required_availability: 99
+  
+  tasks:
+    - name: Display monitoring parameters
+      debug:
+        msg:
+          - "🔍 Starting availability monitoring"
+          - "⏱️  Duration: {{ monitoring_duration }} seconds"
+          - "🔄 Check interval: {{ check_interval }} seconds"
+          - "🎯 Required availability: {{ required_availability }}%"
+    
+    - name: Run availability monitoring
+      shell: |
+        #!/bin/bash
+        
+        # Initialize counters
+        successful_checks=0
+        failed_checks=0
+        start_time=$(date +%s)
+        end_time=$((start_time + {{ monitoring_duration }}))
+        
+        echo "Starting monitoring at $(date '+%Y-%m-%d %H:%M:%S')"
+        
+        # Main monitoring loop
+        while [ $(date +%s) -lt $end_time ]; do
+          timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+          
+          # Check the health endpoint
+          if curl -f -s --max-time 3 https://{{ ansible_host }}/healthz > /dev/null 2>&1; then
+            successful_checks=$((successful_checks + 1))
+            echo "✅ $timestamp - Health check passed"
+          else
+            failed_checks=$((failed_checks + 1))
+            echo "❌ $timestamp - Health check failed"
+            
+            # Try to identify the issue
+            if ! curl -s --max-time 1 http://localhost:443/nginx-health > /dev/null 2>&1; then
+              echo "   └─ Nginx appears to be down"
+            elif ! curl -s --max-time 1 http://localhost:8001/healthz > /dev/null 2>&1 && \
+                 ! curl -s --max-time 1 http://localhost:8002/healthz > /dev/null 2>&1; then
+              echo "   └─ Both containers appear to be down"
+            else
+              echo "   └─ Unknown issue - check logs"
+            fi
+          fi
+          
+          sleep {{ check_interval }}
+        done
+        
+        # Calculate results
+        total_checks=$((successful_checks + failed_checks))
+        availability=$(echo "scale=2; $successful_checks * 100 / $total_checks" | bc)
+        
+        echo ""
+        echo "===== Monitoring Summary ====="
+        echo "Duration: {{ monitoring_duration }} seconds"
+        echo "Total checks: $total_checks"
+        echo "✅ Successful: $successful_checks"
+        echo "❌ Failed: $failed_checks"
+        echo "📊 Availability: ${availability}%"
+        echo "=============================="
+        
+        # Exit with error if availability is below threshold
+        if (( $(echo "$availability < {{ required_availability }}" | bc -l) )); then
+          echo "⚠️  WARNING: Availability (${availability}%) is below required threshold ({{ required_availability }}%)"
+          exit 1
+        else
+          echo "✅ Availability meets requirements"
+          exit 0
+        fi
+      register: monitoring_result
+      failed_when: monitoring_result.rc != 0
+      changed_when: false
+    
+    - name: Display monitoring output
+      debug:
+        msg: "{{ monitoring_result.stdout_lines }}"
+    
+    - name: Check container resource usage during monitoring
+      shell: |
+        echo "===== Container Resource Usage ====="
+        docker stats --no-stream --format "table {{ '{{.Container}}' }}\t{{ '{{.CPUPerc}}' }}\t{{ '{{.MemUsage}}' }}\t{{ '{{.NetIO}}' }}" | grep fastapi-procmon || echo "No containers found"
+      become: true
+      become_user: ubuntu
+      register: resource_usage
+      changed_when: false
+    
+    - name: Display resource usage
+      debug:
+        msg: "{{ resource_usage.stdout_lines }}"
+    
+    - name: Final monitoring status
+      debug:
+        msg:
+          - "✅ Monitoring completed successfully"
+          - "🎯 Application maintained {{ required_availability }}% availability"
+          - "📈 System is stable and ready for production traffic"
+      when: monitoring_result.rc == 0

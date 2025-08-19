@@ -1,0 +1,65 @@
+# roles/fastapi_deployment/templates/nginx.conf.j2
+upstream fastapi_backend {
+    server 127.0.0.1:{{ backend_port }} max_fails=3 fail_timeout=30s;
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name {{ domain_name | default('ameed.xyz') }};
+    
+    # Redirect HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    
+    server_name {{ domain_name | default('ameed.xyz') }};
+    
+    # Try Let's Encrypt first, fallback to self-signed
+    {% set letsencrypt_cert = '/etc/letsencrypt/live/' + (domain_name | default('ameed.xyz')) + '/fullchain.pem' %}
+    {% set letsencrypt_key = '/etc/letsencrypt/live/' + (domain_name | default('ameed.xyz')) + '/privkey.pem' %}
+    {% set selfsigned_cert = '/etc/ssl/certs/' + (domain_name | default('ameed.xyz')) + '.pem' %}
+    {% set selfsigned_key = '/etc/ssl/private/' + (domain_name | default('ameed.xyz')) + '.key' %}
+    
+    ssl_certificate {{ letsencrypt_cert }};
+    ssl_certificate_key {{ letsencrypt_key }};
+
+    # Basic SSL configuration
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=63072000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    
+    # Logs
+    access_log {{ nginx_access_log }};
+    error_log {{ nginx_error_log }};
+    
+    location / {
+        proxy_pass http://fastapi_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+        proxy_buffering off;
+    }
+    
+    # Health check endpoint for debugging
+    location /nginx-health {
+        access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
+    }
+}

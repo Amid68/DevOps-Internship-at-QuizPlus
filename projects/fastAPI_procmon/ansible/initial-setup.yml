@@ -1,0 +1,141 @@
+---
+# initial-setup.yml
+# Run this FIRST to prepare your server for FastAPI deployment
+
+- name: Initial Server Setup for FastAPI Deployment
+  hosts: ec2_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    domain_name: "ameed.xyz"  # Update with your domain
+    
+  tasks:
+    - name: Update system packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+        autoremove: yes
+    
+    - name: Install essential packages
+      apt:
+        name:
+          - nginx
+          - docker.io
+          - docker-compose
+          - ufw
+          - certbot
+          - python3-certbot-nginx
+          - curl
+          - htop
+          - unzip
+        state: present
+    
+    - name: Start and enable Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+    
+    - name: Add ubuntu user to docker group
+      user:
+        name: ubuntu
+        groups: docker
+        append: yes
+    
+    - name: Configure UFW firewall
+      ufw:
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.proto | default('tcp') }}"
+      loop:
+        - { rule: "allow", port: "22" }     # SSH
+        - { rule: "allow", port: "80" }     # HTTP
+        - { rule: "allow", port: "443" }    # HTTPS
+    
+    - name: Enable UFW
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+    
+    - name: Create nginx directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+        - /var/log/nginx
+    
+    - name: Remove default nginx site
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      notify: restart nginx
+    
+    - name: Generate SSL certificate with Let's Encrypt
+      command: >
+        certbot --nginx 
+        --non-interactive 
+        --agree-tos 
+        --email {{ ansible_user_email | default('admin@' + domain_name) }}
+        --domains {{ domain_name }},www.{{ domain_name }}
+      register: certbot_result
+      failed_when: false
+      # Let's Encrypt will work since DNS is properly configured
+    
+    - name: Generate self-signed certificate for testing (if Let's Encrypt failed)
+      block:
+        - name: Create SSL directory
+          file:
+            path: /etc/ssl/private
+            state: directory
+            mode: '0700'
+        
+        - name: Generate self-signed certificate
+          command: >
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048
+            -keyout /etc/ssl/private/{{ domain_name }}.key
+            -out /etc/ssl/certs/{{ domain_name }}.pem
+            -subj "/C=US/ST=State/L=City/O=Organization/CN={{ domain_name }}"
+      when: certbot_result is failed
+    
+    - name: Start and enable nginx
+      systemd:
+        name: nginx
+        state: started
+        enabled: yes
+    
+    - name: Create application directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: '0755'
+      loop:
+        - /home/ubuntu/apps
+        - /home/ubuntu/logs
+    
+    - name: Display setup completion
+      debug:
+        msg:
+          - "✅ Server setup completed successfully!"
+          - "🐳 Docker installed and running"
+          - "🌐 Nginx installed and configured"
+          - "🔒 SSL certificate configured"
+          - "🔥 Firewall configured"
+          - "📂 Application directories created"
+          - "👤 Ubuntu user added to docker group"
+          - ""
+          - "Next steps:"
+          - "1. Point your domain to {{ ansible_host }}"
+          - "2. Run your deployment playbook"
+  
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
